@@ -1,0 +1,191 @@
+{
+  "switches": {
+    "ixp1s1": {
+      "grpc_address": "127.0.0.1:50001",
+      "device_id": 1,
+      "ports": [1, 2, 3],
+      "paths": {
+        "slow": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:01:03:00"
+        },
+        "fast": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:01:04:00"
+        }
+      }
+    },
+    "ixp2s1": {
+      "grpc_address": "127.0.0.1:50002",
+      "device_id": 2,
+      "ports": [1, 2, 3],
+      "paths": {
+        "slow": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:01:03:01"
+        },
+        "fast": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:01:04:01"
+        }
+      }
+    }
+  },
+  "tenants": [
+    {
+      "switch": "ixp1s1",
+      "tenant_id": 100,
+      "ingress_port": 1,
+      "name": "AS100 ingress"
+    },
+    {
+      "switch": "ixp2s1",
+      "tenant_id": 200,
+      "ingress_port": 1,
+      "name": "AS200 ingress"
+    }
+  ],
+  "groups": [
+    {
+      "name": "traffic_forward",
+      "switch": "ixp1s1",
+      "group_id": 100,
+      "policy_id": 100,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": ["slow", "fast"],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "probe_slow_forward",
+      "switch": "ixp1s1",
+      "group_id": 101,
+      "policy_id": 101,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": ["slow"],
+      "initial_path": "slow",
+      "kind": "probe",
+      "path_name": "slow"
+    },
+    {
+      "name": "probe_fast_forward",
+      "switch": "ixp1s1",
+      "group_id": 102,
+      "policy_id": 102,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": ["fast"],
+      "initial_path": "fast",
+      "kind": "probe",
+      "path_name": "fast"
+    },
+    {
+      "name": "traffic_reverse",
+      "switch": "ixp2s1",
+      "group_id": 200,
+      "policy_id": 200,
+      "tenant_id": 200,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": ["slow", "fast"],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "probe_slow_reverse",
+      "switch": "ixp2s1",
+      "group_id": 201,
+      "policy_id": 201,
+      "tenant_id": 200,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": ["slow"],
+      "initial_path": "slow",
+      "kind": "probe",
+      "path_name": "slow"
+    },
+    {
+      "name": "probe_fast_reverse",
+      "switch": "ixp2s1",
+      "group_id": 202,
+      "policy_id": 202,
+      "tenant_id": 200,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": ["fast"],
+      "initial_path": "fast",
+      "kind": "probe",
+      "path_name": "fast"
+    }
+  ],
+  "probe_service": {
+    "client_host": "as1h1",
+    "server_host": "as2h1",
+    "server_ip": "8.1.2.101",
+    "udp_port": 5000,
+    "traffic_tos": 184
+  },
+  "closed_loop": {
+    "probe_interval_s": 5.0,
+    "probe_count": 3,
+    "probe_timeout_s": 2.0,
+    "ema_alpha": 0.6,
+    "switch_penalty_ms": 80.0,
+    "min_improvement_ms": 50.0,
+    "hold_down_s": 8.0
+  },
+  "path_links": {
+    "fast": [
+      {
+        "node": "as4r1",
+        "interface": "as4r1-eth0"
+      },
+      {
+        "node": "ixp1s1",
+        "interface": "ixp1s1-eth2"
+      },
+      {
+        "node": "as4r1",
+        "interface": "as4r1-eth1"
+      },
+      {
+        "node": "ixp2s1",
+        "interface": "ixp2s1-eth2"
+      }
+    ]
+  },
+  "experiment": {
+    "duration_s": 55,
+    "events": [
+      {
+        "time_s": 20,
+        "type": "set_path_extra_delay",
+        "path": "fast",
+        "delay_ms": 250
+      },
+      {
+        "time_s": 40,
+        "type": "set_path_extra_delay",
+        "path": "fast",
+        "delay_ms": 0
+      }
+    ]
+  }
+}
