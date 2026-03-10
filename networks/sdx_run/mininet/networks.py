@@ -167,6 +167,12 @@ class Topology(Topo):
             intfName2="ixp1s1-eth1",
             delay="240ms",
         )
+
+        # Path 2 / fast path via AS400.
+        self.addLink(as4r1, ixp1s1, intfName1="as4r1-eth0", params1={"ip": "8.2.1.3/24"}, intfName2="ixp1s1-eth2")
+
+        # Connect AS200 to IXP2.
+        self.addLink(as2r1, ixp2s1, intfName1="as2r1-eth1", params1={"ip": "8.2.2.1/24"}, intfName2="ixp2s1-eth0")
         self.addLink(
             as3r1,
             ixp2s1,
@@ -175,13 +181,7 @@ class Topology(Topo):
             intfName2="ixp2s1-eth1",
             delay="240ms",
         )
-
-        # Path 2 / fast path via AS400.
-        self.addLink(as4r1, ixp1s1, intfName1="as4r1-eth0", params1={"ip": "8.2.1.3/24"}, intfName2="ixp1s1-eth2")
         self.addLink(as4r1, ixp2s1, intfName1="as4r1-eth1", params1={"ip": "8.2.2.3/24"}, intfName2="ixp2s1-eth2")
-
-        # Connect AS200 to IXP2.
-        self.addLink(as2r1, ixp2s1, intfName1="as2r1-eth1", params1={"ip": "8.2.2.1/24"}, intfName2="ixp2s1-eth0")
 
 
 # pylint: disable=W0108
