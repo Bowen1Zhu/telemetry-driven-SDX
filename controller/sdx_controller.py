@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import pathlib
+import statistics
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -12,24 +13,28 @@ import finsy
 
 from common.p4.functions import HelperFunctions
 
-LOG = finsy.LoggerAdapter(logging.getLogger("finsy"))
+logger = finsy.LoggerAdapter(logging.getLogger("finsy"))
 
-DIGEST_NAME = "mac_learn_digest_t"
+MAC_DIGEST_NAME = "mac_learn_digest_t"
+SAMPLING_DIGEST_NAME = "telemetry_sample_digest_t"
 DMAC_TABLE = "dmac"
 FORWARD_ACTION = "forward"
 TENANT_TABLE = "tenant_port_map"
 CLASSIFIER_TABLE = "steering_classifier"
 ACTIVE_EGRESS_TABLE = "active_egress"
+SAMPLING_TABLE = "telemetry_sample_control"
 
 
 @dataclass(frozen=True)
 class PathConfig:
+    name: str
     egress_port: int
     egress_mac: str
 
 
 @dataclass(frozen=True)
 class SwitchConfig:
+    name: str
     grpc_address: str
     device_id: int
     ports: tuple[int, ...]
@@ -62,11 +67,12 @@ class GroupConfig:
 
 
 @dataclass(frozen=True)
-class ProbeConfig:
+class ProbeServiceConfig:
     client_host: str
     server_host: str
     server_ip: str
     udp_port: int
+    int_udp_port: int
     traffic_tos: int
 
 
@@ -82,70 +88,100 @@ class ClosedLoopConfig:
 
 
 @dataclass(frozen=True)
+class SamplingTelemetryConfig:
+    sample_every_n: int
+    queue_weight: float
+    residence_weight: float
+    drain_wait_s: float
+
+
+@dataclass(frozen=True)
+class IntTelemetryConfig:
+    queue_weight: float
+    residence_weight: float
+
+
+@dataclass(frozen=True)
+class TelemetryConfig:
+    mode: str
+    sampling: SamplingTelemetryConfig
+    int_mode: IntTelemetryConfig
+
+
+@dataclass(frozen=True)
 class RunConfig:
     switches: dict[str, SwitchConfig]
     tenants: tuple[TenantConfig, ...]
     groups: tuple[GroupConfig, ...]
-    probe: ProbeConfig
+    probe_service: ProbeServiceConfig
     closed_loop: ClosedLoopConfig
+    telemetry: TelemetryConfig
     path_links: dict[str, tuple[dict[str, str], ...]]
-    run: dict[str, Any]
+    experiment: dict[str, Any]
 
     @classmethod
     def load(cls, config_path: str | pathlib.Path) -> "RunConfig":
         with open(config_path, "r", encoding="utf-8") as file:
             raw = json.load(file)
 
-        switches = {
-            switch_name: SwitchConfig(
+        switches: dict[str, SwitchConfig] = {}
+        for switch_name, switch_raw in raw["switches"].items():
+            paths = {
+                path_name: PathConfig(
+                    name=path_name,
+                    egress_port=int(path_raw["egress_port"]),
+                    egress_mac=str(path_raw["egress_mac"]),
+                )
+                for path_name, path_raw in switch_raw["paths"].items()
+            }
+            switches[switch_name] = SwitchConfig(
+                name=switch_name,
                 grpc_address=str(switch_raw["grpc_address"]),
                 device_id=int(switch_raw["device_id"]),
                 ports=tuple(int(port) for port in switch_raw["ports"]),
-                paths={
-                    path_name: PathConfig(
-                        egress_port=int(path_raw["egress_port"]),
-                        egress_mac=str(path_raw["egress_mac"]),
-                    )
-                    for path_name, path_raw in switch_raw["paths"].items()
-                },
+                paths=paths,
             )
-            for switch_name, switch_raw in raw["switches"].items()
-        }
 
         tenants = tuple(
             TenantConfig(
-                switch=str(item["switch"]),
-                tenant_id=int(item["tenant_id"]),
-                ingress_port=int(item["ingress_port"]),
-                name=str(item.get("name", f"tenant-{item['tenant_id']}")),
+                switch=str(entry["switch"]),
+                tenant_id=int(entry["tenant_id"]),
+                ingress_port=int(entry["ingress_port"]),
+                name=str(entry.get("name", f"tenant-{entry['tenant_id']}")),
             )
-            for item in raw["tenants"]
+            for entry in raw["tenants"]
         )
 
         groups = tuple(
             GroupConfig(
-                name=str(item["name"]),
-                switch=str(item["switch"]),
-                group_id=int(item["group_id"]),
-                policy_id=int(item["policy_id"]),
-                tenant_id=int(item["tenant_id"]),
-                src_ip=str(item["src_ip"]),
-                dst_ip=str(item["dst_ip"]),
-                ip_proto=int(item["ip_proto"]),
-                tos=int(item["tos"]),
-                allowed_paths=tuple(str(path_name) for path_name in item["allowed_paths"]),
-                initial_path=str(item["initial_path"]),
-                kind=str(item["kind"]),
-                path_name=(None if item.get("path_name") is None else str(item["path_name"])),
+                name=str(entry["name"]),
+                switch=str(entry["switch"]),
+                group_id=int(entry["group_id"]),
+                policy_id=int(entry["policy_id"]),
+                tenant_id=int(entry["tenant_id"]),
+                src_ip=str(entry["src_ip"]),
+                dst_ip=str(entry["dst_ip"]),
+                ip_proto=int(entry["ip_proto"]),
+                tos=int(entry["tos"]),
+                allowed_paths=tuple(str(path_name) for path_name in entry["allowed_paths"]),
+                initial_path=str(entry["initial_path"]),
+                kind=str(entry["kind"]),
+                path_name=(None if entry.get("path_name") is None else str(entry["path_name"])),
             )
-            for item in raw["groups"]
+            for entry in raw["groups"]
         )
 
-        probe = ProbeConfig(
+        telemetry_raw = dict(raw.get("telemetry", {}))
+        sampling_raw = dict(telemetry_raw.get("sampling", {}))
+        int_raw = dict(telemetry_raw.get("int", {}))
+        int_udp_port = int(raw.get("probe_service", {}).get("int_udp_port", int_raw.get("udp_port", 5001)))
+
+        probe_service = ProbeServiceConfig(
             client_host=str(raw["probe_service"]["client_host"]),
             server_host=str(raw["probe_service"]["server_host"]),
             server_ip=str(raw["probe_service"]["server_ip"]),
             udp_port=int(raw["probe_service"]["udp_port"]),
+            int_udp_port=int_udp_port,
             traffic_tos=int(raw["probe_service"]["traffic_tos"]),
         )
 
@@ -159,20 +195,38 @@ class RunConfig:
             hold_down_s=float(raw["closed_loop"]["hold_down_s"]),
         )
 
-        run_config = cls(
+        telemetry = TelemetryConfig(
+            mode=str(telemetry_raw.get("mode", "mode1")),
+            sampling=SamplingTelemetryConfig(
+                sample_every_n=int(sampling_raw.get("sample_every_n", 1)),
+                queue_weight=float(sampling_raw.get("queue_weight", 0.0)),
+                residence_weight=float(sampling_raw.get("residence_weight", 0.0)),
+                drain_wait_s=float(sampling_raw.get("drain_wait_s", 0.2)),
+            ),
+            int_mode=IntTelemetryConfig(
+                queue_weight=float(int_raw.get("queue_weight", 0.0)),
+                residence_weight=float(int_raw.get("residence_weight", 0.0)),
+            ),
+        )
+
+        path_links = {
+            str(path_name): tuple(dict(item) for item in items)
+            for path_name, items in raw.get("path_links", {}).items()
+        }
+        experiment = dict(raw.get("experiment", {}))
+
+        demo_config = cls(
             switches=switches,
             tenants=tenants,
             groups=groups,
-            probe=probe,
+            probe_service=probe_service,
             closed_loop=closed_loop,
-            path_links={
-                str(path_name): tuple(dict(item) for item in items)
-                for path_name, items in raw.get("path_links", {}).items()
-            },
-            run=dict(raw.get("experiment", {})),
+            telemetry=telemetry,
+            path_links=path_links,
+            experiment=experiment,
         )
-        run_config.validate()
-        return run_config
+        demo_config.validate()
+        return demo_config
 
     def validate(self) -> None:
         known_switches = set(self.switches)
@@ -180,6 +234,8 @@ class RunConfig:
 
         if not self.groups:
             raise ValueError("At least one steering group must be configured")
+        if self.telemetry.mode not in {"mode1", "mode2", "mode3"}:
+            raise ValueError(f"Unsupported telemetry mode: {self.telemetry.mode}")
 
         for tenant in self.tenants:
             if tenant.switch not in known_switches:
@@ -207,8 +263,22 @@ class RunConfig:
                 raise ValueError(f"Probe group {group.name} must include path_name")
 
     @property
-    def groups_by_name(self) -> dict[str, GroupConfig]:
+    def group_by_name(self) -> dict[str, GroupConfig]:
         return {group.name: group for group in self.groups}
+
+    @property
+    def groups_by_switch(self) -> dict[str, list[GroupConfig]]:
+        grouped: dict[str, list[GroupConfig]] = {switch_name: [] for switch_name in self.switches}
+        for group in self.groups:
+            grouped[group.switch].append(group)
+        return grouped
+
+    @property
+    def tenants_by_switch(self) -> dict[str, list[TenantConfig]]:
+        grouped: dict[str, list[TenantConfig]] = {switch_name: [] for switch_name in self.switches}
+        for tenant in self.tenants:
+            grouped[tenant.switch].append(tenant)
+        return grouped
 
     @property
     def traffic_groups(self) -> tuple[GroupConfig, ...]:
@@ -216,23 +286,17 @@ class RunConfig:
 
     @property
     def probe_tos_by_path(self) -> dict[str, int]:
-        probe_tos: dict[str, int] = {}
+        mapping: dict[str, int] = {}
         for group in self.groups:
-            if group.kind != "probe" or group.path_name is None:
+            if group.kind != "probe" or not group.path_name:
                 continue
-            old_tos = probe_tos.get(group.path_name)
-            if old_tos is not None and old_tos != group.tos:
+            existing = mapping.get(group.path_name)
+            if existing is not None and existing != group.tos:
                 raise ValueError(
-                    f"Probe path {group.path_name} uses inconsistent TOS values ({old_tos} vs {group.tos})"
+                    f"Probe path {group.path_name} uses inconsistent TOS values ({existing} vs {group.tos})"
                 )
-            probe_tos[group.path_name] = group.tos
-        return probe_tos
-
-    def groups_on(self, switch_name: str) -> tuple[GroupConfig, ...]:
-        return tuple(group for group in self.groups if group.switch == switch_name)
-
-    def tenants_on(self, switch_name: str) -> tuple[TenantConfig, ...]:
-        return tuple(tenant for tenant in self.tenants if tenant.switch == switch_name)
+            mapping[group.path_name] = group.tos
+        return mapping
 
 
 @dataclass
@@ -241,7 +305,26 @@ class MacEntry:
     last_seen: float
 
 
+@dataclass(frozen=True)
+class SamplingReport:
+    time_s: float
+    switch_name: str
+    group_name: str
+    path_name: str
+    egress_port: int
+    queue_depth: int
+    residence_us: int
+    diffserv: int
+
+
 class SdxController:
+    """P4Runtime controller for the SDX prototype.
+
+    Mode 1 uses active RTT probes only.
+    Mode 2 adds sampled digest reports from the switches.
+    Mode 3 uses INT-like probe packets decoded at the sender.
+    """
+
     def __init__(
         self,
         config_path: str | pathlib.Path,
@@ -250,102 +333,173 @@ class SdxController:
         mac_idle_timeout_s: float = 10.0,
     ) -> None:
         self.config = RunConfig.load(config_path)
+        self.p4info_path = pathlib.Path(p4info_path)
+        self.p4blob_path = pathlib.Path(p4blob_path)
         self.mac_idle_timeout_s = mac_idle_timeout_s
-        self.group_current_path = {group.name: group.initial_path for group in self.config.groups}
 
-        self._ready = {switch_name: asyncio.Event() for switch_name in self.config.switches}
-        self._mac_tables: dict[str, dict[str, MacEntry]] = {}
-        self._switches = {
-            switch_name: finsy.Switch(
+        self._ready_events: dict[str, asyncio.Event] = {
+            switch_name: asyncio.Event() for switch_name in self.config.switches
+        }
+        self._switches: dict[str, finsy.Switch] = {}
+        self._mac_dbs: dict[str, dict[str, MacEntry]] = {}
+        self._sampling_reports: list[SamplingReport] = []
+        self.group_current_path: dict[str, str] = {
+            group.name: group.initial_path for group in self.config.groups
+        }
+        self._group_by_switch_and_id: dict[tuple[str, int], GroupConfig] = {
+            (group.switch, group.group_id): group for group in self.config.groups
+        }
+
+        for switch_name, switch_cfg in self.config.switches.items():
+            self._switches[switch_name] = finsy.Switch(
                 switch_name,
                 switch_cfg.grpc_address,
                 finsy.SwitchOptions(
-                    p4info=pathlib.Path(p4info_path),
-                    p4blob=pathlib.Path(p4blob_path),
+                    p4info=self.p4info_path,
+                    p4blob=self.p4blob_path,
                     device_id=switch_cfg.device_id,
-                    ready_handler=self._on_ready,
+                    ready_handler=self._controller_ready_handler,
                 ),
             )
-            for switch_name, switch_cfg in self.config.switches.items()
-        }
+
         self._controller = finsy.Controller(list(self._switches.values()))
-        self._task: asyncio.Task[None] | None = None
+        self._controller_task: asyncio.Task[None] | None = None
+
+    @property
+    def switches(self) -> dict[str, finsy.Switch]:
+        return self._switches
 
     async def start(self) -> None:
-        if self._task is None:
-            self._task = asyncio.create_task(self._controller.run())
+        if self._controller_task is not None:
+            return
+        self._controller_task = asyncio.create_task(self._controller.run())
 
     async def stop(self) -> None:
-        if self._task is None:
+        if self._controller_task is None:
             return
-        self._task.cancel()
+        self._controller_task.cancel()
         try:
-            await self._task
+            await self._controller_task
         except asyncio.CancelledError:
             pass
-        self._task = None
+        self._controller_task = None
 
     async def wait_until_ready(self, timeout_s: float = 30.0) -> None:
-        await asyncio.wait_for(asyncio.gather(*(event.wait() for event in self._ready.values())), timeout=timeout_s)
+        await asyncio.wait_for(
+            asyncio.gather(*(event.wait() for event in self._ready_events.values())),
+            timeout=timeout_s,
+        )
 
     async def set_group_path(self, group_name: str, path_name: str) -> None:
-        group = self.config.groups_by_name[group_name]
+        group = self.config.group_by_name[group_name]
         if path_name not in group.allowed_paths:
             raise ValueError(
                 f"Path {path_name} is not allowed for group {group_name}; allowed={group.allowed_paths}"
             )
-        await self._switches[group.switch].modify([self._active_egress_entry(group, path_name)])
+        entry = self._build_active_egress_entry(group, path_name)
+        switch = self._switches[group.switch]
+        await switch.modify([entry])
         self.group_current_path[group_name] = path_name
-        LOG.info("%s: group %s -> path %s", group.switch, group_name, path_name)
+        logger.info("%s: group %s -> path %s", group.switch, group_name, path_name)
 
     async def set_traffic_path(self, path_name: str) -> None:
-        await asyncio.gather(*(self.set_group_path(group.name, path_name) for group in self.config.traffic_groups))
+        await asyncio.gather(
+            *(self.set_group_path(group.name, path_name) for group in self.config.traffic_groups)
+        )
 
-    async def _on_ready(self, switch: finsy.Switch) -> None:
-        if not switch.is_primary:
+    def get_sampling_summary(self, path_name: str, since_s: float) -> dict[str, Any]:
+        probe_group_names = {
+            group.name
+            for group in self.config.groups
+            if group.kind == "probe" and group.path_name == path_name
+        }
+        relevant = [
+            report
+            for report in self._sampling_reports
+            if report.time_s >= since_s
+            and report.path_name == path_name
+            and report.group_name in probe_group_names
+        ]
+        if not relevant:
+            return {
+                "report_count": 0,
+                "avg_queue_depth": None,
+                "avg_residence_ms": None,
+                "switches": [],
+            }
+        return {
+            "report_count": len(relevant),
+            "avg_queue_depth": statistics.mean(report.queue_depth for report in relevant),
+            "avg_residence_ms": statistics.mean(report.residence_us for report in relevant) / 1000.0,
+            "switches": sorted({report.switch_name for report in relevant}),
+        }
+
+    async def _controller_ready_handler(self, sw: finsy.Switch) -> None:
+        if not sw.is_primary:
             return
 
-        cfg = self.config.switches[switch.name]
-        await switch.delete_all()
-        await switch.insert(self._multicast_entries(cfg.ports))
-        await self._insert_if_any(switch, [self._tenant_entry(tenant) for tenant in self.config.tenants_on(switch.name)])
-        await self._insert_if_any(switch, [self._classifier_entry(group) for group in self.config.groups_on(switch.name)])
-        await self._insert_if_any(
-            switch,
-            [self._active_egress_entry(group, group.initial_path) for group in self.config.groups_on(switch.name)],
-        )
-        await switch.insert([finsy.P4DigestEntry(DIGEST_NAME, max_list_size=1)])
+        switch_cfg = self.config.switches[sw.name]
+        await sw.delete_all()
+        await self._provision_multicast_groups(sw, switch_cfg.ports)
+        await self._provision_tenant_entries(sw)
+        await self._provision_classifier_entries(sw)
+        await self._provision_active_egress_entries(sw)
+        await self._provision_sampling_entries(sw)
+        await self._enable_digests(sw)
 
-        mac_table: dict[str, MacEntry] = {}
-        self._mac_tables[switch.name] = mac_table
-        switch.create_task(self._digest_task(switch, mac_table))
-        switch.create_task(self._mac_aging_task(switch, mac_table))
+        mac_db: dict[str, MacEntry] = {}
+        self._mac_dbs[sw.name] = mac_db
+        sw.create_task(self._digest_listener_task(sw, mac_db))
+        sw.create_task(self._sampling_digest_listener_task(sw))
+        sw.create_task(self._mac_aging_task(sw, mac_db))
 
-        self._ready[switch.name].set()
-        LOG.info("%s: SDX controller ready", switch.name)
+        self._ready_events[sw.name].set()
+        logger.info("%s: SDX controller ready", sw.name)
 
-    @staticmethod
-    async def _insert_if_any(switch: finsy.Switch, entries: list[Any]) -> None:
+    async def _provision_multicast_groups(self, sw: finsy.Switch, ports: tuple[int, ...]) -> None:
+        groups = []
+        for ingress in ports:
+            replicas = [port for port in ports if port != ingress]
+            groups.append(finsy.P4MulticastGroupEntry(ingress, replicas=replicas))
+        await sw.insert(groups)
+
+    async def _provision_tenant_entries(self, sw: finsy.Switch) -> None:
+        entries = [self._build_tenant_entry(tenant) for tenant in self.config.tenants_by_switch[sw.name]]
         if entries:
-            await switch.insert(entries)
+            await sw.insert(entries)
 
-    @staticmethod
-    def _multicast_entries(ports: tuple[int, ...]) -> list[finsy.P4MulticastGroupEntry]:
-        return [
-            finsy.P4MulticastGroupEntry(ingress_port, replicas=[port for port in ports if port != ingress_port])
-            for ingress_port in ports
-        ]
+    async def _provision_classifier_entries(self, sw: finsy.Switch) -> None:
+        entries = [self._build_classifier_entry(group) for group in self.config.groups_by_switch[sw.name]]
+        if entries:
+            await sw.insert(entries)
 
-    @staticmethod
-    def _tenant_entry(tenant: TenantConfig) -> finsy.P4TableEntry:
+    async def _provision_active_egress_entries(self, sw: finsy.Switch) -> None:
+        entries = [self._build_active_egress_entry(group, group.initial_path) for group in self.config.groups_by_switch[sw.name]]
+        if entries:
+            await sw.insert(entries)
+
+    async def _provision_sampling_entries(self, sw: finsy.Switch) -> None:
+        sample_every_n = max(0, int(self.config.telemetry.sampling.sample_every_n))
+        if sample_every_n <= 0:
+            return
+        entries = [self._build_sampling_entry(group, sample_every_n) for group in self.config.groups_by_switch[sw.name]]
+        if entries:
+            await sw.insert(entries)
+
+    async def _enable_digests(self, sw: finsy.Switch) -> None:
+        entries = [finsy.P4DigestEntry(MAC_DIGEST_NAME, max_list_size=1)]
+        if self.config.telemetry.sampling.sample_every_n > 0:
+            entries.append(finsy.P4DigestEntry(SAMPLING_DIGEST_NAME, max_list_size=1))
+        await sw.insert(entries)
+
+    def _build_tenant_entry(self, tenant: TenantConfig) -> finsy.P4TableEntry:
         return finsy.P4TableEntry(
             TENANT_TABLE,
             match=finsy.Match(ingress_port=tenant.ingress_port),
             action=finsy.Action("set_tenant", tenant_id=tenant.tenant_id),
         )
 
-    @staticmethod
-    def _classifier_entry(group: GroupConfig) -> finsy.P4TableEntry:
+    def _build_classifier_entry(self, group: GroupConfig) -> finsy.P4TableEntry:
         return finsy.P4TableEntry(
             CLASSIFIER_TABLE,
             match=finsy.Match(
@@ -358,29 +512,39 @@ class SdxController:
             action=finsy.Action("classify", group_id=group.group_id, policy_id=group.policy_id),
         )
 
-    def _active_egress_entry(self, group: GroupConfig, path_name: str) -> finsy.P4TableEntry:
-        path = self.config.switches[group.switch].paths[path_name]
+    def _build_active_egress_entry(self, group: GroupConfig, path_name: str) -> finsy.P4TableEntry:
+        path_cfg = self.config.switches[group.switch].paths[path_name]
         return finsy.P4TableEntry(
             ACTIVE_EGRESS_TABLE,
             match=finsy.Match(group_id=group.group_id),
-            action=finsy.Action("set_active_egress", egress_mac=path.egress_mac, port=path.egress_port),
+            action=finsy.Action(
+                "set_active_egress",
+                egress_mac=path_cfg.egress_mac,
+                port=path_cfg.egress_port,
+            ),
         )
 
-    @staticmethod
-    def _forward_entry(mac_address: str, port: int) -> finsy.P4TableEntry:
+    def _build_sampling_entry(self, group: GroupConfig, sample_every_n: int) -> finsy.P4TableEntry:
+        return finsy.P4TableEntry(
+            SAMPLING_TABLE,
+            match=finsy.Match(group_id=group.group_id),
+            action=finsy.Action("set_sampling", sample_every_n=sample_every_n),
+        )
+
+    def _build_forward_entry(self, mac_address: str, port: int) -> finsy.P4TableEntry:
         return finsy.P4TableEntry(
             DMAC_TABLE,
             match=finsy.Match(dstAddr=mac_address),
             action=finsy.Action(FORWARD_ACTION, port=port),
         )
 
-    async def _mac_aging_task(self, switch: finsy.Switch, mac_table: dict[str, MacEntry]) -> None:
+    async def _mac_aging_task(self, sw: finsy.Switch, mac_db: dict[str, MacEntry]) -> None:
         while True:
             await asyncio.sleep(1.0)
             now = time.monotonic()
             expired = [
                 mac_address
-                for mac_address, entry in mac_table.items()
+                for mac_address, entry in mac_db.items()
                 if (now - entry.last_seen) >= self.mac_idle_timeout_s
             ]
             if not expired:
@@ -388,76 +552,163 @@ class SdxController:
 
             delete_entries = []
             for mac_address in expired:
-                entry = mac_table.pop(mac_address, None)
-                if entry is not None:
-                    delete_entries.append(self._forward_entry(mac_address, entry.port))
+                entry = mac_db.pop(mac_address, None)
+                if entry is None:
+                    continue
+                delete_entries.append(self._build_forward_entry(mac_address, entry.port))
 
             if delete_entries:
-                await switch.delete(delete_entries)
-                LOG.info("%s: aged out %d MAC entries", switch.name, len(delete_entries))
+                await sw.delete(delete_entries)
+                logger.info("%s: aged out %d MAC entries", sw.name, len(delete_entries))
 
-    async def _digest_task(self, switch: finsy.Switch, mac_table: dict[str, MacEntry]) -> None:
-        async for digest in switch.read_digests(DIGEST_NAME):
+    async def _digest_listener_task(self, sw: finsy.Switch, mac_db: dict[str, MacEntry]) -> None:
+        async for digest_message in sw.read_digests(MAC_DIGEST_NAME):
             try:
-                records = self._digest_records(digest)
-            except Exception as exc:  # pragma: no cover - runtime-dependent representation
-                LOG.warning("%s: failed to read digest records (%s): %r", switch.name, type(exc).__name__, exc)
-                await switch.write([digest.ack()])
+                records = self._extract_digest_records(digest_message)
+            except Exception as exc:  # pragma: no cover - depends on runtime representation
+                logger.warning(
+                    "%s: failed to read digest records (%s): %r",
+                    sw.name,
+                    type(exc).__name__,
+                    exc,
+                )
+                await sw.write([digest_message.ack()])
                 continue
 
             for record in records:
                 try:
-                    src_mac = self._mac_string(record["srcAddr"])
+                    src_mac = self._normalize_mac_from_digest(record["srcAddr"])
                     ingress_port = int(record["ingress_port"])
-                except Exception as exc:  # pragma: no cover - defensive parsing
-                    LOG.warning("%s: failed to parse digest record (%s): %r", switch.name, type(exc).__name__, exc)
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "%s: failed to parse digest record (%s): %r",
+                        sw.name,
+                        type(exc).__name__,
+                        exc,
+                    )
                     continue
 
-                if not self._is_unicast(src_mac):
+                if not self._is_unicast_src_mac(src_mac):
                     continue
 
                 now = time.monotonic()
-                old = mac_table.get(src_mac)
-                if old is None:
-                    mac_table[src_mac] = MacEntry(port=ingress_port, last_seen=now)
-                    await switch.insert([self._forward_entry(src_mac, ingress_port)])
-                    LOG.info("%s: learned %s on port %d", switch.name, src_mac, ingress_port)
+                old_entry = mac_db.get(src_mac)
+                if old_entry is None:
+                    mac_db[src_mac] = MacEntry(port=ingress_port, last_seen=now)
+                    await sw.insert([self._build_forward_entry(src_mac, ingress_port)])
+                    logger.info("%s: learned %s on port %d", sw.name, src_mac, ingress_port)
                     continue
 
-                old.last_seen = now
-                if old.port != ingress_port:
-                    old.port = ingress_port
-                    await switch.modify([self._forward_entry(src_mac, ingress_port)])
-                    LOG.info("%s: moved %s to port %d", switch.name, src_mac, ingress_port)
+                old_entry.last_seen = now
+                if old_entry.port != ingress_port:
+                    old_entry.port = ingress_port
+                    await sw.modify([self._build_forward_entry(src_mac, ingress_port)])
+                    logger.info("%s: moved %s to port %d", sw.name, src_mac, ingress_port)
 
-            await switch.write([digest.ack()])
+            await sw.write([digest_message.ack()])
+
+    async def _sampling_digest_listener_task(self, sw: finsy.Switch) -> None:
+        if self.config.telemetry.sampling.sample_every_n <= 0:
+            return
+        async for digest_message in sw.read_digests(SAMPLING_DIGEST_NAME):
+            try:
+                records = self._extract_digest_records(digest_message)
+            except Exception as exc:  # pragma: no cover - runtime dependent
+                logger.warning(
+                    "%s: failed to read sampling digest records (%s): %r",
+                    sw.name,
+                    type(exc).__name__,
+                    exc,
+                )
+                await sw.write([digest_message.ack()])
+                continue
+
+            now = time.monotonic()
+            for record in records:
+                try:
+                    group_id = int(record["group_id"])
+                    egress_port = int(record.get("egress_port", 0))
+                    diffserv = int(record.get("diffserv", 0))
+                    queue_depth = int(record.get("queue_depth", 0))
+                    residence_us = int(record.get("residence_us", 0))
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "%s: failed to parse sampling digest record (%s): %r",
+                        sw.name,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    continue
+
+                group = self._group_by_switch_and_id.get((sw.name, group_id))
+                if group is None:
+                    continue
+
+                path_name = group.path_name or self._path_name_from_egress_port(sw.name, egress_port)
+                if path_name is None:
+                    continue
+
+                self._sampling_reports.append(
+                    SamplingReport(
+                        time_s=now,
+                        switch_name=sw.name,
+                        group_name=group.name,
+                        path_name=path_name,
+                        egress_port=egress_port,
+                        queue_depth=queue_depth,
+                        residence_us=residence_us,
+                        diffserv=diffserv,
+                    )
+                )
+
+            self._prune_sampling_reports(now)
+            await sw.write([digest_message.ack()])
+
+    def _prune_sampling_reports(self, now_s: float | None = None, window_s: float = 60.0) -> None:
+        cutoff = (time.monotonic() if now_s is None else now_s) - window_s
+        self._sampling_reports = [report for report in self._sampling_reports if report.time_s >= cutoff]
+
+    def _path_name_from_egress_port(self, switch_name: str, egress_port: int) -> str | None:
+        for path_name, path_cfg in self.config.switches[switch_name].paths.items():
+            if path_cfg.egress_port == egress_port:
+                return path_name
+        return None
 
     @staticmethod
-    def _digest_records(digest: Any) -> list[dict[str, Any]]:
-        if hasattr(digest, "data"):
-            data = digest.data
-            return [data] if isinstance(data, dict) else list(data)
-        if isinstance(digest, (list, tuple)):
-            return list(digest)
-        return [digest]
+    def _extract_digest_records(digest_message: Any) -> list[dict[str, Any]]:
+        if hasattr(digest_message, "data"):
+            records = digest_message.data
+            if isinstance(records, dict):
+                return [records]
+            return list(records)
+        if isinstance(digest_message, (list, tuple)):
+            return list(digest_message)
+        return [digest_message]
 
     @staticmethod
-    def _mac_string(value: Any) -> str:
+    def _normalize_mac_from_digest(value: Any) -> str:
         if isinstance(value, int):
             return HelperFunctions.convert_mac_address_integer_to_string(value & 0xFFFFFFFFFFFF)
 
-        text = str(value).strip().lower()
-        if ":" in text:
-            return text
+        value_str = str(value).strip().lower()
+        if ":" in value_str:
+            return value_str
 
         try:
-            mac_int = int(text, 0) if text.startswith("0x") or text.isdigit() else int(text, 16)
+            if value_str.startswith("0x"):
+                mac_int = int(value_str, 16)
+            elif value_str.isdigit():
+                mac_int = int(value_str)
+            else:
+                mac_int = int(value_str, 16)
             return HelperFunctions.convert_mac_address_integer_to_string(mac_int & 0xFFFFFFFFFFFF)
         except ValueError:
-            return text
+            return value_str
 
     @staticmethod
-    def _is_unicast(mac_address: str) -> bool:
-        if mac_address.lower() == "ff:ff:ff:ff:ff:ff":
+    def _is_unicast_src_mac(mac_str: str) -> bool:
+        mac = mac_str.lower()
+        if mac == "ff:ff:ff:ff:ff:ff":
             return False
-        return (int(mac_address.split(":")[0], 16) & 0x01) == 0
+        first_octet = int(mac.split(":")[0], 16)
+        return (first_octet & 0x01) == 0

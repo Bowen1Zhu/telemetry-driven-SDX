@@ -2,6 +2,8 @@
 #include <v1model.p4>
 
 typedef bit<48> mac_addr_t;
+const bit<16> INT_UDP_PORT = 5001;
+const bit<16> INT_MAGIC = 0x4954; /* "IT" */
 
 header ethernet_t {
     mac_addr_t dstAddr;
@@ -44,26 +46,58 @@ header udp_t {
     bit<16> checksum;
 }
 
+header int_probe_t {
+    bit<16> magic;
+    bit<8>  version;
+    bit<8>  hop_count;
+    bit<32> probe_id;
+    bit<16> sequence;
+    bit<16> reserved;
+}
+
+header int_hop_t {
+    bit<16> egress_port;
+    bit<16> reserved;
+    bit<32> queue_depth;
+    bit<32> residence_us;
+}
+
 struct metadata {
     bit<16> tenant_id;
     bit<16> policy_id;
     bit<16> group_id;
 
-    /* Include L4 ports for future. */
+    /* Parse L4 ports for future expansion. */
     bit<16> l4_src_port;
     bit<16> l4_dst_port;
+
+    /* Sampling control for telemetry mode 2. */
+    bit<8>  sample_every_n;
+    bit<1>  emit_sampling_digest;
+    bit<16> sample_egress_port;
 }
 
 struct headers {
-    ethernet_t ethernet;
-    ipv4_t     ipv4;
-    tcp_t      tcp;
-    udp_t      udp;
+    ethernet_t  ethernet;
+    ipv4_t      ipv4;
+    tcp_t       tcp;
+    udp_t       udp;
+    int_probe_t int_probe;
+    int_hop_t   int_hop_0;
+    int_hop_t   int_hop_1;
 }
 
 struct mac_learn_digest_t {
     mac_addr_t srcAddr;
     bit<9>     ingress_port;
+}
+
+struct telemetry_sample_digest_t {
+    bit<16> group_id;
+    bit<8>  diffserv;
+    bit<16> egress_port;
+    bit<32> queue_depth;
+    bit<32> residence_us;
 }
 
 parser MyParser(
@@ -100,6 +134,27 @@ parser MyParser(
 
     state parse_udp {
         packet.extract(hdr.udp);
+        transition select(hdr.udp.dstPort) {
+            INT_UDP_PORT: parse_int_probe;
+            default: accept;
+        }
+    }
+
+    state parse_int_probe {
+        packet.extract(hdr.int_probe);
+        transition select(hdr.int_probe.magic) {
+            INT_MAGIC: parse_int_hop_0;
+            default: accept;
+        }
+    }
+
+    state parse_int_hop_0 {
+        packet.extract(hdr.int_hop_0);
+        transition parse_int_hop_1;
+    }
+
+    state parse_int_hop_1 {
+        packet.extract(hdr.int_hop_1);
         transition accept;
     }
 }
@@ -125,7 +180,10 @@ control MyIngress(
     }
 
     action flood() {
-        /* Controller creates one multicast group per ingress port. */
+        /*
+         * The controller creates one multicast group per ingress port, with the
+         * ingress port itself excluded from the replica set.
+         */
         standard_metadata.mcast_grp = (bit<16>) standard_metadata.ingress_port;
     }
 
@@ -141,9 +199,14 @@ control MyIngress(
     action set_active_egress(mac_addr_t egress_mac, bit<9> port) {
         hdr.ethernet.dstAddr = egress_mac;
         standard_metadata.egress_spec = port;
+        meta.sample_egress_port = (bit<16>) port;
 
         /* Ensure this packet is treated as unicast steering, not multicast flood. */
         standard_metadata.mcast_grp = 0;
+    }
+
+    action set_sampling(bit<8> sample_every_n) {
+        meta.sample_every_n = sample_every_n;
     }
 
     table tenant_port_map {
@@ -186,6 +249,18 @@ control MyIngress(
         default_action = NoAction();
     }
 
+    table telemetry_sample_control {
+        key = {
+            meta.group_id: exact;
+        }
+        actions = {
+            set_sampling;
+            NoAction;
+        }
+        size = 512;
+        default_action = NoAction();
+    }
+
     table dmac {
         key = {
             hdr.ethernet.dstAddr: exact;
@@ -214,6 +289,9 @@ control MyIngress(
             meta.group_id = 0;
             meta.l4_src_port = 0;
             meta.l4_dst_port = 0;
+            meta.sample_every_n = 0;
+            meta.emit_sampling_digest = 0;
+            meta.sample_egress_port = 0;
 
             tenant_port_map.apply();
 
@@ -228,7 +306,37 @@ control MyIngress(
             /* Steering only applies to classified IPv4 packets. */
             if (hdr.ipv4.isValid()) {
                 if (steering_classifier.apply().hit) {
-                    if (!active_egress.apply().hit) {
+                    if (active_egress.apply().hit) {
+                        telemetry_sample_control.apply();
+                        if (meta.sample_every_n > 0) {
+                            bit<16> stride;
+                            bit<16> sample_bucket;
+                            stride = (bit<16>) meta.sample_every_n;
+                            /*
+                             * Use hash-based 1-out-of-N sampling. Emit the digest in
+                             * ingress so BMv2 simple_switch reliably exports it.
+                             */
+                            hash(sample_bucket,
+                                 HashAlgorithm.crc16,
+                                 (bit<16>) 0,
+                                 { meta.group_id,
+                                   hdr.ipv4.srcAddr,
+                                   hdr.ipv4.dstAddr,
+                                   hdr.ipv4.identification,
+                                   meta.l4_src_port,
+                                   meta.l4_dst_port },
+                                 stride);
+                            if (sample_bucket == 0) {
+                                telemetry_sample_digest_t sample;
+                                sample.group_id = meta.group_id;
+                                sample.diffserv = hdr.ipv4.diffserv;
+                                sample.egress_port = meta.sample_egress_port;
+                                sample.queue_depth = 0;
+                                sample.residence_us = 0;
+                                digest<telemetry_sample_digest_t>(1, sample);
+                            }
+                        }
+                    } else {
                         dmac.apply();
                     }
                 } else {
@@ -246,7 +354,27 @@ control MyEgress(
     inout metadata meta,
     inout standard_metadata_t standard_metadata
 ) {
-    apply { }
+    apply {
+        if (hdr.int_probe.isValid() && hdr.int_probe.magic == INT_MAGIC) {
+            if (hdr.int_probe.hop_count == 0) {
+                hdr.int_hop_0.egress_port = (bit<16>) standard_metadata.egress_port;
+                hdr.int_hop_0.reserved = 0;
+                hdr.int_hop_0.queue_depth = (bit<32>) standard_metadata.deq_qdepth;
+                hdr.int_hop_0.residence_us = standard_metadata.deq_timedelta;
+                hdr.int_probe.hop_count = 1;
+            } else if (hdr.int_probe.hop_count == 1) {
+                hdr.int_hop_1.egress_port = (bit<16>) standard_metadata.egress_port;
+                hdr.int_hop_1.reserved = 0;
+                hdr.int_hop_1.queue_depth = (bit<32>) standard_metadata.deq_qdepth;
+                hdr.int_hop_1.residence_us = standard_metadata.deq_timedelta;
+                hdr.int_probe.hop_count = 2;
+            }
+
+            /* After editing the payload, disable UDP checksum for IPv4. */
+            hdr.udp.checksum = 0;
+        }
+
+    }
 }
 
 control MyComputeChecksum(
@@ -265,6 +393,9 @@ control MyDeparser(
         packet.emit(hdr.ipv4);
         packet.emit(hdr.tcp);
         packet.emit(hdr.udp);
+        packet.emit(hdr.int_probe);
+        packet.emit(hdr.int_hop_0);
+        packet.emit(hdr.int_hop_1);
     }
 }
 

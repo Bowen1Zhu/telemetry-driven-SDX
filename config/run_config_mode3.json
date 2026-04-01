@@ -212,7 +212,7 @@
     ]
   },
   "telemetry": {
-    "mode": "mode1",
+    "mode": "mode3",
     "sampling": {
       "sample_every_n": 1,
       "queue_weight": 0.0,

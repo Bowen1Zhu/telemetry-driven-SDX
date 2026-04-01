@@ -212,12 +212,12 @@
     ]
   },
   "telemetry": {
-    "mode": "mode1",
+    "mode": "mode2",
     "sampling": {
       "sample_every_n": 1,
       "queue_weight": 0.0,
       "residence_weight": 0.0,
-      "drain_wait_s": 0.2
+      "drain_wait_s": 1.0
     },
     "int": {
       "udp_port": 5001,

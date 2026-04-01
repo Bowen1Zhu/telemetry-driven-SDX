@@ -11,7 +11,7 @@ P4_COMPILE_ARGS += --p4v 16
 P4_COMPILE_ARGS += --p4runtime-files $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).p4info.txtpb
 P4_COMPILE_ARGS += -o $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).json
 
-.PHONY: build run run-fixed-slow run-fixed-fast clean
+.PHONY: build run run-mode2 run-mode3 run-fixed-slow run-fixed-fast clean
 
 all: build
 
@@ -22,17 +22,27 @@ build:
 run:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config.json
+
+run-mode2:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config_mode2.json --telemetry-mode mode2
+
+run-mode3:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config_mode3.json --telemetry-mode mode3
 
 run-fixed-slow:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path slow
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path slow --config config/run_config.json
 
 run-fixed-fast:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path fast
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path fast --config config/run_config.json
 
 clean:
 	sudo mn -c >/dev/null 2>&1 || true
