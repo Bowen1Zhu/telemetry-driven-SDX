@@ -17,7 +17,8 @@
           "egress_port": 3,
           "egress_mac": "f0:00:0d:01:04:00"
         }
-      }
+      },
+      "thrift_port": 9091
     },
     "ixp2s1": {
       "grpc_address": "127.0.0.1:50002",
@@ -36,7 +37,8 @@
           "egress_port": 3,
           "egress_mac": "f0:00:0d:01:04:01"
         }
-      }
+      },
+      "thrift_port": 9092
     }
   },
   "tenants": [

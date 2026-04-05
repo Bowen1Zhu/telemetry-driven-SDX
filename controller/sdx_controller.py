@@ -4,7 +4,9 @@ import asyncio
 import json
 import logging
 import pathlib
+import re
 import statistics
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -23,6 +25,9 @@ TENANT_TABLE = "tenant_port_map"
 CLASSIFIER_TABLE = "steering_classifier"
 ACTIVE_EGRESS_TABLE = "active_egress"
 SAMPLING_TABLE = "telemetry_sample_control"
+MODE2_COUNT_REGISTER = "mode2_sample_count_reg"
+MODE2_QUEUE_REGISTER = "mode2_queue_sum_reg"
+MODE2_RESIDENCE_REGISTER = "mode2_residence_sum_reg"
 
 
 @dataclass(frozen=True)
@@ -37,6 +42,7 @@ class SwitchConfig:
     name: str
     grpc_address: str
     device_id: int
+    thrift_port: int
     ports: tuple[int, ...]
     paths: dict[str, PathConfig]
 
@@ -134,10 +140,12 @@ class RunConfig:
                 )
                 for path_name, path_raw in switch_raw["paths"].items()
             }
+            device_id = int(switch_raw["device_id"])
             switches[switch_name] = SwitchConfig(
                 name=switch_name,
                 grpc_address=str(switch_raw["grpc_address"]),
-                device_id=int(switch_raw["device_id"]),
+                device_id=device_id,
+                thrift_port=int(switch_raw.get("thrift_port", 9090 + device_id)),
                 ports=tuple(int(port) for port in switch_raw["ports"]),
                 paths=paths,
             )
@@ -317,6 +325,13 @@ class SamplingReport:
     diffserv: int
 
 
+@dataclass
+class Mode2RegisterSnapshot:
+    sample_count: int
+    queue_sum: int
+    residence_sum: int
+
+
 class SdxController:
     """P4Runtime controller for the SDX prototype.
 
@@ -343,6 +358,7 @@ class SdxController:
         self._switches: dict[str, finsy.Switch] = {}
         self._mac_dbs: dict[str, dict[str, MacEntry]] = {}
         self._sampling_reports: list[SamplingReport] = []
+        self._mode2_register_snapshots: dict[tuple[str, int], Mode2RegisterSnapshot] = {}
         self.group_current_path: dict[str, str] = {
             group.name: group.initial_path for group in self.config.groups
         }
@@ -407,12 +423,64 @@ class SdxController:
             *(self.set_group_path(group.name, path_name) for group in self.config.traffic_groups)
         )
 
-    def get_sampling_summary(self, path_name: str, since_s: float) -> dict[str, Any]:
-        probe_group_names = {
-            group.name
+    def _mode2_probe_groups_for_path(self, path_name: str) -> tuple[GroupConfig, ...]:
+        return tuple(
+            group
             for group in self.config.groups
             if group.kind == "probe" and group.path_name == path_name
-        }
+        )
+
+    def _read_mode2_register_snapshot(self, switch_name: str, group_ids: tuple[int, ...]) -> dict[int, Mode2RegisterSnapshot]:
+        if not group_ids:
+            return {}
+
+        switch_cfg = self.config.switches[switch_name]
+        commands: list[str] = []
+        for group_id in group_ids:
+            commands.append(f"register_read {MODE2_COUNT_REGISTER} {group_id}")
+            commands.append(f"register_read {MODE2_QUEUE_REGISTER} {group_id}")
+            commands.append(f"register_read {MODE2_RESIDENCE_REGISTER} {group_id}")
+        cli_input = "\n".join(commands) + "\n"
+
+        try:
+            result = subprocess.run(
+                ["simple_switch_CLI", "--thrift-port", str(switch_cfg.thrift_port)],
+                input=cli_input,
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=5.0,
+            )
+        except Exception as exc:  # pragma: no cover - depends on local BMv2 install
+            logger.warning("%s: failed to read Mode 2 registers (%s): %r", switch_name, type(exc).__name__, exc)
+            return {}
+
+        stdout = result.stdout
+        snapshots: dict[int, Mode2RegisterSnapshot] = {}
+        for group_id in group_ids:
+            count = self._extract_register_value(stdout, MODE2_COUNT_REGISTER, group_id)
+            queue_sum = self._extract_register_value(stdout, MODE2_QUEUE_REGISTER, group_id)
+            residence_sum = self._extract_register_value(stdout, MODE2_RESIDENCE_REGISTER, group_id)
+            if count is None or queue_sum is None or residence_sum is None:
+                continue
+            snapshots[group_id] = Mode2RegisterSnapshot(
+                sample_count=count,
+                queue_sum=queue_sum,
+                residence_sum=residence_sum,
+            )
+        return snapshots
+
+    @staticmethod
+    def _extract_register_value(cli_stdout: str, register_name: str, index: int) -> int | None:
+        pattern = re.compile(rf"{re.escape(register_name)}\[{index}\]\s*=\s*(\d+)")
+        match = pattern.search(cli_stdout)
+        if match:
+            return int(match.group(1))
+        return None
+
+    def get_sampling_summary(self, path_name: str, since_s: float) -> dict[str, Any]:
+        probe_groups = self._mode2_probe_groups_for_path(path_name)
+        probe_group_names = {group.name for group in probe_groups}
         relevant = [
             report
             for report in self._sampling_reports
@@ -420,17 +488,55 @@ class SdxController:
             and report.path_name == path_name
             and report.group_name in probe_group_names
         ]
-        if not relevant:
-            return {
-                "report_count": 0,
-                "avg_queue_depth": None,
-                "avg_residence_ms": None,
-                "switches": [],
-            }
+
+        avg_queue_depth: float | None = None
+        avg_residence_ms: float | None = None
+        register_report_count = 0
+
+        if self.config.telemetry.mode == "mode2":
+            groups_by_switch: dict[str, list[GroupConfig]] = {}
+            for group in probe_groups:
+                groups_by_switch.setdefault(group.switch, []).append(group)
+
+            total_delta_count = 0
+            total_delta_queue = 0
+            total_delta_residence = 0
+            for switch_name, groups in groups_by_switch.items():
+                group_ids = tuple(group.group_id for group in groups)
+                current = self._read_mode2_register_snapshot(switch_name, group_ids)
+                for group in groups:
+                    snapshot = current.get(group.group_id)
+                    if snapshot is None:
+                        continue
+                    key = (switch_name, group.group_id)
+                    previous = self._mode2_register_snapshots.get(key)
+                    if previous is None:
+                        delta_count = snapshot.sample_count
+                        delta_queue = snapshot.queue_sum
+                        delta_residence = snapshot.residence_sum
+                    else:
+                        delta_count = max(0, snapshot.sample_count - previous.sample_count)
+                        delta_queue = max(0, snapshot.queue_sum - previous.queue_sum)
+                        delta_residence = max(0, snapshot.residence_sum - previous.residence_sum)
+                    self._mode2_register_snapshots[key] = snapshot
+                    total_delta_count += delta_count
+                    total_delta_queue += delta_queue
+                    total_delta_residence += delta_residence
+
+            if total_delta_count > 0:
+                register_report_count = total_delta_count
+                avg_queue_depth = total_delta_queue / total_delta_count
+                avg_residence_ms = (total_delta_residence / total_delta_count) / 1000.0
+
+        digest_report_count = len(relevant)
+        report_count = register_report_count if register_report_count > 0 else digest_report_count
+        if digest_report_count > 0 and register_report_count > 0:
+            report_count = min(digest_report_count, register_report_count)
+
         return {
-            "report_count": len(relevant),
-            "avg_queue_depth": statistics.mean(report.queue_depth for report in relevant),
-            "avg_residence_ms": statistics.mean(report.residence_us for report in relevant) / 1000.0,
+            "report_count": report_count,
+            "avg_queue_depth": avg_queue_depth,
+            "avg_residence_ms": avg_residence_ms,
             "switches": sorted({report.switch_name for report in relevant}),
         }
 
@@ -445,6 +551,7 @@ class SdxController:
         await self._provision_classifier_entries(sw)
         await self._provision_active_egress_entries(sw)
         await self._provision_sampling_entries(sw)
+        await self._reset_mode2_registers(sw)
         await self._enable_digests(sw)
 
         mac_db: dict[str, MacEntry] = {}
@@ -485,6 +592,35 @@ class SdxController:
         entries = [self._build_sampling_entry(group, sample_every_n) for group in self.config.groups_by_switch[sw.name]]
         if entries:
             await sw.insert(entries)
+
+    async def _reset_mode2_registers(self, sw: finsy.Switch) -> None:
+        if self.config.telemetry.mode != "mode2" or self.config.telemetry.sampling.sample_every_n <= 0:
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._reset_mode2_registers_sync, sw.name)
+
+    def _reset_mode2_registers_sync(self, switch_name: str) -> None:
+        switch_cfg = self.config.switches[switch_name]
+        commands = "\n".join(
+            [
+                f"register_reset {MODE2_COUNT_REGISTER}",
+                f"register_reset {MODE2_QUEUE_REGISTER}",
+                f"register_reset {MODE2_RESIDENCE_REGISTER}",
+            ]
+        ) + "\n"
+        try:
+            subprocess.run(
+                ["simple_switch_CLI", "--thrift-port", str(switch_cfg.thrift_port)],
+                input=commands,
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=5.0,
+            )
+        except Exception as exc:  # pragma: no cover - depends on local BMv2 install
+            logger.warning("%s: failed to reset Mode 2 registers (%s): %r", switch_name, type(exc).__name__, exc)
+        else:
+            logger.info("%s: reset Mode 2 egress telemetry registers", switch_name)
 
     async def _enable_digests(self, sw: finsy.Switch) -> None:
         entries = [finsy.P4DigestEntry(MAC_DIGEST_NAME, max_list_size=1)]
