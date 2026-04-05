@@ -623,10 +623,22 @@ class SdxController:
             logger.info("%s: reset Mode 2 egress telemetry registers", switch_name)
 
     async def _enable_digests(self, sw: finsy.Switch) -> None:
-        entries = [finsy.P4DigestEntry(MAC_DIGEST_NAME, max_list_size=1)]
+        entries = [finsy.P4DigestEntry(MAC_DIGEST_NAME, max_list_size=16)]
         if self.config.telemetry.sampling.sample_every_n > 0:
-            entries.append(finsy.P4DigestEntry(SAMPLING_DIGEST_NAME, max_list_size=1))
+            entries.append(finsy.P4DigestEntry(SAMPLING_DIGEST_NAME, max_list_size=16))
         await sw.insert(entries)
+
+    async def _ack_digest_safe(self, sw: finsy.Switch, digest_message: Any, digest_name: str) -> None:
+        try:
+            await sw.write([digest_message.ack()])
+        except Exception as exc:  # pragma: no cover - BMv2/Finsy runtime quirk
+            logger.warning(
+                "%s: failed to ack digest %s (%s): %r",
+                sw.name,
+                digest_name,
+                type(exc).__name__,
+                exc,
+            )
 
     def _build_tenant_entry(self, tenant: TenantConfig) -> finsy.P4TableEntry:
         return finsy.P4TableEntry(
@@ -708,7 +720,7 @@ class SdxController:
                     type(exc).__name__,
                     exc,
                 )
-                await sw.write([digest_message.ack()])
+                await self._ack_digest_safe(sw, digest_message, MAC_DIGEST_NAME)
                 continue
 
             for record in records:
@@ -741,7 +753,7 @@ class SdxController:
                     await sw.modify([self._build_forward_entry(src_mac, ingress_port)])
                     logger.info("%s: moved %s to port %d", sw.name, src_mac, ingress_port)
 
-            await sw.write([digest_message.ack()])
+            await self._ack_digest_safe(sw, digest_message, MAC_DIGEST_NAME)
 
     async def _sampling_digest_listener_task(self, sw: finsy.Switch) -> None:
         if self.config.telemetry.sampling.sample_every_n <= 0:
@@ -756,7 +768,7 @@ class SdxController:
                     type(exc).__name__,
                     exc,
                 )
-                await sw.write([digest_message.ack()])
+                await self._ack_digest_safe(sw, digest_message, SAMPLING_DIGEST_NAME)
                 continue
 
             now = time.monotonic()
@@ -798,7 +810,7 @@ class SdxController:
                 )
 
             self._prune_sampling_reports(now)
-            await sw.write([digest_message.ack()])
+            await self._ack_digest_safe(sw, digest_message, SAMPLING_DIGEST_NAME)
 
     def _prune_sampling_reports(self, now_s: float | None = None, window_s: float = 60.0) -> None:
         cutoff = (time.monotonic() if now_s is None else now_s) - window_s
