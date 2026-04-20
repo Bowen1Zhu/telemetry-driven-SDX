@@ -561,9 +561,9 @@
     "probe_count": 3,
     "probe_timeout_s": 2.0,
     "ema_alpha": 1.0,
-    "switch_penalty_ms": 25.0,
-    "min_improvement_ms": 25.0,
-    "hold_down_s": 0.0
+    "switch_penalty_ms": 10.0,
+    "min_improvement_ms": 10.0,
+    "hold_down_s": 8.0
   },
   "path_links": {
     "fast": [
@@ -592,7 +592,7 @@
         "time_s": 20,
         "type": "set_path_extra_delay",
         "path": "fast",
-        "delay_ms": 250
+        "delay_ms": 450
       },
       {
         "time_s": 40,
@@ -607,7 +607,7 @@
     "sampling": {
       "sample_every_n": 1,
       "queue_weight": 0.0,
-      "residence_weight": 500.0,
+      "residence_weight": 300.0,
       "drain_wait_s": 1.0
     },
     "int": {
