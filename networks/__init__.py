@@ -8,7 +8,7 @@ from mininet.topo import Topo
 _TOPOLOGY_MODULES: dict[str, str] = {
     "sdx_run": "networks.sdx_run.mininet.networks",
     "sdx_general": "networks.sdx_general.mininet.networks",
-    "sdx_bgp": "networks.sdx_bgp.mininet.networks",
+    "sdx_3ixp": "networks.sdx_3ixp.mininet.networks",
 }
 
 

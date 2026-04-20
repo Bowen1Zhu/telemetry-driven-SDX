@@ -1,42 +1,35 @@
-# CS6204 Project: Telemetry-Driven SDX
+# Telemetry-Driven SDX
 
-## Build
+## 3-IXP / 3-path topology
+
+Build:
 ```bash
 make build
 ```
 
-## Single-pair runs
+Run 3-IXP closed loop (Mode 1):
 ```bash
-make run
-make run-mode2
-make run-mode3
-make run-fixed-slow
-make run-fixed-fast
+make run-3ixp
 ```
 
-## Generalized runs
+Run 3-IXP closed loop (Mode 2):
 ```bash
-make run-generalized
-make run-generalized-validate
-make run-generalized-closed-loop
-make run-generalized-closed-loop-mode2
-make run-generalized-closed-loop-mode3
+make run-3ixp-mode2
 ```
 
-## Queue-aware generalized runs
+Run 3-IXP closed loop (Mode 3):
 ```bash
-make run-generalized-queue-mode1
-make run-generalized-queue-mode2
-make run-generalized-queue-mode3
+make run-3ixp-mode3
 ```
 
-## Output
-Each run writes `latest_run.csv` and `latest_summary.json` under the relevant `results/` subdirectory.
-
-
-## Using BGP
-
+Validate fixed assignments across the three paths:
 ```bash
-make run-bgp-diagnose
+make run-3ixp-validate
 ```
 
+## For this topology:
+
+- Topology name: `sdx_3ixp`
+- IXP1 and IXP3 perform steering for the four traffic classes.
+- IXP2 is the middle exchange fabric that carries the three path chains.
+- The three end-to-end paths are: `slow`, `medium`, and `fast`.

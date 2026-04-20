@@ -27,7 +27,6 @@ sys.path.append(REPOSITORY_DIRECTORY)
 from controller.sdx_controller import RunConfig, SdxController, TrafficSessionConfig
 from networks import load_topology_class
 from scripts.run_sdx import configure_logging, ensure_parent_dirs, run_udp_probe_async
-from scripts.queue_support import QueueScenarioManager
 
 LOGGER = logging.getLogger("sdx_general_closed_loop")
 
@@ -81,15 +80,8 @@ class GeneralizedClosedLoopRunner:
         self.rows: list[dict[str, Any]] = []
         self.csv_path = os.path.join(self.results_dir, "latest_run.csv")
         self.summary_path = os.path.join(self.results_dir, "latest_summary.json")
-        self.queue_manager = QueueScenarioManager(
-            network=self.network,
-            repository_directory=REPOSITORY_DIRECTORY,
-            experiment=self.config.experiment,
-            logger=LOGGER,
-        )
 
     def start_servers(self) -> None:
-        self.queue_manager.start_sinks()
         server_hosts = sorted({session.server_host for session in self.config.traffic_sessions})
         for host_name in server_hosts:
             if host_name in self._server_processes:
@@ -112,8 +104,6 @@ class GeneralizedClosedLoopRunner:
             LOGGER.info("Started UDP echo server on %s", host_name)
 
     def stop_servers(self) -> None:
-        self.queue_manager.stop_all_loads()
-        self.queue_manager.stop_sinks()
         for process in self._server_processes.values():
             process.terminate()
             try:
@@ -156,14 +146,6 @@ class GeneralizedClosedLoopRunner:
                 delay_ms = int(event["delay_ms"])
                 self.set_path_extra_delay(path_name, delay_ms)
                 event_messages.append(f"set_path_extra_delay(path={path_name}, delay_ms={delay_ms})")
-            elif event["type"] == "start_path_congestion":
-                path_name = str(event["path"])
-                self.queue_manager.start_load(path_name)
-                event_messages.append(f"start_path_congestion(path={path_name})")
-            elif event["type"] == "stop_path_congestion":
-                path_name = str(event["path"])
-                self.queue_manager.stop_load(path_name)
-                event_messages.append(f"stop_path_congestion(path={path_name})")
             else:
                 event_messages.append(f"unknown_event({event})")
         return event_messages
@@ -179,7 +161,7 @@ class GeneralizedClosedLoopRunner:
                 self.config.telemetry.int_mode.queue_weight,
                 self.config.telemetry.int_mode.residence_weight,
             )
-        return (self.config.telemetry.base.queue_weight, 0.0)
+        return (0.0, 0.0)
 
     def _hop_count(self, result: dict[str, Any]) -> int:
         value = result.get("hop_count")
@@ -246,14 +228,10 @@ class GeneralizedClosedLoopRunner:
                         path_name,
                         timing[(session.name, path_name)],
                     )
+                    combined[session.name][path_name]["aux_queue_avg"] = sampling["avg_queue_depth"]
                     combined[session.name][path_name]["aux_residence_ms"] = sampling["avg_residence_ms"]
                     combined[session.name][path_name]["aux_report_count"] = sampling["report_count"]
                     combined[session.name][path_name]["aux_switches"] = sampling["switches"]
-        if self.queue_manager.enabled:
-            queue_by_path = {path_name: self.queue_manager.queue_delay_ms(path_name) for path_name in ("slow", "fast")}
-            for session in self.config.traffic_sessions:
-                for path_name in ("slow", "fast"):
-                    combined[session.name][path_name]["aux_queue_avg"] = queue_by_path[path_name]
         return combined
 
     async def collect_traffic_results(self) -> dict[str, dict[str, Any]]:
@@ -496,7 +474,6 @@ async def async_main(args: argparse.Namespace, network: Mininet, config: RunConf
     try:
         await controller.start()
         await controller.wait_until_ready(timeout_s=45.0)
-        runner.queue_manager.configure_profiles()
         LOGGER.info("Waiting %.1fs for FRR/BGP warm-up", args.warmup_s)
         await asyncio.sleep(args.warmup_s)
         runner.warm_up()
