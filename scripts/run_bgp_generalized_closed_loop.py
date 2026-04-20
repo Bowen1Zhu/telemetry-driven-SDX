@@ -581,7 +581,8 @@ def main() -> None:
     setLogLevel("info")
     config = RunConfig.load(args.config)
     topology_class = load_topology_class(config.topology_name)
-    network = Mininet(topo=topology_class(), link=TCLink, controller=None, autoSetMacs=False)
+    network = Mininet(topo=topology_class(), link=TCLink, autoSetMacs=False)
+    LOGGER.info("Starting Mininet network for topology %s", config.topology_name)
     network.start()
     try:
         asyncio.run(async_main(args, network, config))
