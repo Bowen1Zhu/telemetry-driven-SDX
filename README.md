@@ -1,53 +1,42 @@
 # CS6204 Project: Telemetry-Driven SDX
 
-## To run:
-
+## Build
 ```bash
 make build
-make run
 ```
 
-For fixed baselines:
-
+## Single-pair runs
 ```bash
+make run
+make run-mode2
+make run-mode3
 make run-fixed-slow
 make run-fixed-fast
 ```
 
-## To run different telemetry modes:
-
-Mode 1 (active probes):
+## Generalized runs
 ```bash
-make run
+make run-generalized
+make run-generalized-validate
+make run-generalized-closed-loop
+make run-generalized-closed-loop-mode2
+make run-generalized-closed-loop-mode3
 ```
 
-Mode 2 (sampled telemetry):
+## Queue-aware generalized runs
 ```bash
-make run-mode2
+make run-generalized-queue-mode1
+make run-generalized-queue-mode2
+make run-generalized-queue-mode3
 ```
 
-Mode 3 (INT):
-```bash
-make run-mode3
-```
+## Output
+Each run writes `latest_run.csv` and `latest_summary.json` under the relevant `results/` subdirectory.
 
-## To run directly and save results separately
-Mode 1:
-```bash
-sudo /opt/p4/p4dev-python-venv/bin/python3 scripts/run_sdx.py --mode closed-loop --config config/run_config.json --results-dir results/mode1
-```
 
-Mode 2:
-```bash
-sudo /opt/p4/p4dev-python-venv/bin/python3 scripts/run_sdx.py --mode closed-loop --config config/run_config_mode2.json --telemetry-mode mode2 --results-dir results/mode2
-```
+## Using BGP
 
-Mode 3:
 ```bash
-sudo /opt/p4/p4dev-python-venv/bin/python3 scripts/run_sdx.py --mode closed-loop --config config/run_config_mode3.json --telemetry-mode mode3 --results-dir results/mode3
+make run-bgp-diagnose
 ```
-
-## Output files
-- `results/latest_run.csv`
-- `results/latest_summary.json`
 
