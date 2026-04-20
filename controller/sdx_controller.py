@@ -379,6 +379,50 @@ class RunConfig:
             mapping[group.path_name] = group.tos
         return mapping
 
+    def _matching_probe_group(self, traffic_group: GroupConfig, path_name: str) -> GroupConfig | None:
+        matches = [
+            group
+            for group in self.groups
+            if group.kind == "probe"
+            and group.path_name == path_name
+            and group.switch == traffic_group.switch
+            and group.tenant_id == traffic_group.tenant_id
+            and group.src_ip == traffic_group.src_ip
+            and group.dst_ip == traffic_group.dst_ip
+            and group.ip_proto == traffic_group.ip_proto
+        ]
+        if not matches:
+            return None
+        if len(matches) > 1:
+            raise ValueError(
+                f"Traffic group {traffic_group.name} has multiple matching probe groups for path {path_name}: "
+                f"{[group.name for group in matches]}"
+            )
+        return matches[0]
+
+    def probe_groups_for_session_path(self, session_name: str, path_name: str) -> tuple[GroupConfig, ...]:
+        session = self.traffic_session_by_name[session_name]
+        forward_group = self.group_by_name[session.forward_group]
+        reverse_group = self.group_by_name[session.reverse_group]
+        probe_groups: list[GroupConfig] = []
+        for traffic_group in (forward_group, reverse_group):
+            probe_group = self._matching_probe_group(traffic_group, path_name)
+            if probe_group is None:
+                raise ValueError(
+                    f"Traffic session {session.name} is missing a probe group for {traffic_group.name} on path {path_name}"
+                )
+            probe_groups.append(probe_group)
+        return tuple(probe_groups)
+
+    def probe_tos_for_session_path(self, session_name: str, path_name: str) -> int:
+        probe_groups = self.probe_groups_for_session_path(session_name, path_name)
+        values = {group.tos for group in probe_groups}
+        if len(values) != 1:
+            raise ValueError(
+                f"Traffic session {session_name} has inconsistent probe TOS values for path {path_name}: {sorted(values)}"
+            )
+        return next(iter(values))
+
 
 @dataclass
 class MacEntry:
@@ -496,6 +540,13 @@ class SdxController:
             *(self.set_group_path(group.name, path_name) for group in self.config.traffic_groups)
         )
 
+    async def set_session_path(self, session_name: str, path_name: str) -> None:
+        session = self.config.traffic_session_by_name[session_name]
+        await asyncio.gather(
+            self.set_group_path(session.forward_group, path_name),
+            self.set_group_path(session.reverse_group, path_name),
+        )
+
     def _mode2_probe_groups_for_path(self, path_name: str) -> tuple[GroupConfig, ...]:
         return tuple(
             group
@@ -551,15 +602,15 @@ class SdxController:
             return int(match.group(1))
         return None
 
-    def get_sampling_summary(self, path_name: str, since_s: float) -> dict[str, Any]:
-        probe_groups = self._mode2_probe_groups_for_path(path_name)
+    def _sampling_summary_for_probe_groups(self, probe_groups: tuple[GroupConfig, ...], since_s: float) -> dict[str, Any]:
         probe_group_names = {group.name for group in probe_groups}
+        path_names = {group.path_name for group in probe_groups if group.path_name is not None}
         relevant = [
             report
             for report in self._sampling_reports
             if report.time_s >= since_s
-            and report.path_name == path_name
             and report.group_name in probe_group_names
+            and report.path_name in path_names
         ]
 
         avg_queue_depth: float | None = None
@@ -612,6 +663,14 @@ class SdxController:
             "avg_residence_ms": avg_residence_ms,
             "switches": sorted({report.switch_name for report in relevant}),
         }
+
+    def get_sampling_summary(self, path_name: str, since_s: float) -> dict[str, Any]:
+        probe_groups = self._mode2_probe_groups_for_path(path_name)
+        return self._sampling_summary_for_probe_groups(probe_groups, since_s)
+
+    def get_sampling_summary_for_session_path(self, session_name: str, path_name: str, since_s: float) -> dict[str, Any]:
+        probe_groups = self.config.probe_groups_for_session_path(session_name, path_name)
+        return self._sampling_summary_for_probe_groups(probe_groups, since_s)
 
     async def _controller_ready_handler(self, sw: finsy.Switch) -> None:
         if not sw.is_primary:
