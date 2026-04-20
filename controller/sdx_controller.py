@@ -112,6 +112,11 @@ class ClosedLoopConfig:
 
 
 @dataclass(frozen=True)
+class BaseTelemetryConfig:
+    queue_weight: float
+
+
+@dataclass(frozen=True)
 class SamplingTelemetryConfig:
     sample_every_n: int
     queue_weight: float
@@ -128,6 +133,7 @@ class IntTelemetryConfig:
 @dataclass(frozen=True)
 class TelemetryConfig:
     mode: str
+    base: BaseTelemetryConfig
     sampling: SamplingTelemetryConfig
     int_mode: IntTelemetryConfig
 
@@ -246,8 +252,12 @@ class RunConfig:
             hold_down_s=float(raw["closed_loop"]["hold_down_s"]),
         )
 
+        base_raw = dict(telemetry_raw.get("base", {}))
         telemetry = TelemetryConfig(
             mode=str(telemetry_raw.get("mode", "mode1")),
+            base=BaseTelemetryConfig(
+                queue_weight=float(base_raw.get("queue_weight", 0.0)),
+            ),
             sampling=SamplingTelemetryConfig(
                 sample_every_n=int(sampling_raw.get("sample_every_n", 1)),
                 queue_weight=float(sampling_raw.get("queue_weight", 0.0)),
@@ -721,7 +731,11 @@ class SdxController:
         sample_every_n = max(0, int(self.config.telemetry.sampling.sample_every_n))
         if sample_every_n <= 0:
             return
-        entries = [self._build_sampling_entry(group, sample_every_n) for group in self.config.groups_by_switch[sw.name]]
+        entries = [
+            self._build_sampling_entry(group, sample_every_n)
+            for group in self.config.groups_by_switch[sw.name]
+            if group.kind != "background"
+        ]
         if entries:
             await sw.insert(entries)
 

@@ -478,6 +478,40 @@
       "initial_path": "fast",
       "kind": "probe",
       "path_name": "fast"
+    },
+    {
+      "name": "background_slow_forward",
+      "switch": "ixp1s1",
+      "group_id": 112,
+      "policy_id": 112,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 32,
+      "allowed_paths": [
+        "slow"
+      ],
+      "initial_path": "slow",
+      "kind": "background",
+      "path_name": "slow"
+    },
+    {
+      "name": "background_fast_forward",
+      "switch": "ixp1s1",
+      "group_id": 113,
+      "policy_id": 113,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 96,
+      "allowed_paths": [
+        "fast"
+      ],
+      "initial_path": "fast",
+      "kind": "background",
+      "path_name": "fast"
     }
   ],
   "probe_service": {
@@ -561,9 +595,9 @@
     "probe_count": 3,
     "probe_timeout_s": 2.0,
     "ema_alpha": 1.0,
-    "switch_penalty_ms": 25.0,
-    "min_improvement_ms": 25.0,
-    "hold_down_s": 0.0
+    "switch_penalty_ms": 10.0,
+    "min_improvement_ms": 10.0,
+    "hold_down_s": 8.0
   },
   "path_links": {
     "fast": [
@@ -590,30 +624,83 @@
     "events": [
       {
         "time_s": 20,
-        "type": "set_path_extra_delay",
-        "path": "fast",
-        "delay_ms": 250
+        "type": "start_path_congestion",
+        "path": "fast"
       },
       {
         "time_s": 40,
-        "type": "set_path_extra_delay",
-        "path": "fast",
-        "delay_ms": 0
+        "type": "stop_path_congestion",
+        "path": "fast"
       }
-    ]
+    ],
+    "queueing": {
+      "paths": {
+        "slow": {
+          "rate_mbps": 8.0,
+          "burst_kb": 64.0,
+          "latency_ms": 200.0,
+          "bottleneck_links": [
+            {
+              "node": "as3r1",
+              "interface": "as3r1-eth0"
+            },
+            {
+              "node": "as3r1",
+              "interface": "as3r1-eth1"
+            }
+          ],
+          "load": {
+            "client_host": "as1h1",
+            "server_host": "as2h1",
+            "server_ip": "8.1.2.101",
+            "udp_port": 6002,
+            "tos": 32,
+            "rate_mbps": 20.0,
+            "packet_size": 1200
+          }
+        },
+        "fast": {
+          "rate_mbps": 8.0,
+          "burst_kb": 64.0,
+          "latency_ms": 200.0,
+          "bottleneck_links": [
+            {
+              "node": "as4r1",
+              "interface": "as4r1-eth0"
+            },
+            {
+              "node": "as4r1",
+              "interface": "as4r1-eth1"
+            }
+          ],
+          "load": {
+            "client_host": "as1h1",
+            "server_host": "as2h1",
+            "server_ip": "8.1.2.101",
+            "udp_port": 6003,
+            "tos": 96,
+            "rate_mbps": 20.0,
+            "packet_size": 1200
+          }
+        }
+      }
+    }
   },
   "telemetry": {
     "mode": "mode2",
     "sampling": {
       "sample_every_n": 1,
-      "queue_weight": 0.0,
-      "residence_weight": 500.0,
+      "queue_weight": 1.0,
+      "residence_weight": 100.0,
       "drain_wait_s": 1.0
     },
     "int": {
       "udp_port": 5001,
       "queue_weight": 0.0,
       "residence_weight": 0.0
+    },
+    "base": {
+      "queue_weight": 0.0
     }
   }
 }

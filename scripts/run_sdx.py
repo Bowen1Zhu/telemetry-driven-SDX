@@ -25,6 +25,7 @@ sys.path.append(REPOSITORY_DIRECTORY)
 
 from controller.sdx_controller import SdxController, RunConfig
 from networks import load_topology_class
+from scripts.queue_support import QueueScenarioManager
 
 LOGGER = logging.getLogger("sdx_run")
 
@@ -197,8 +198,15 @@ class ExperimentRunner:
 
         self.csv_path = os.path.join(self.results_dir, "latest_run.csv")
         self.summary_path = os.path.join(self.results_dir, "latest_summary.json")
+        self.queue_manager = QueueScenarioManager(
+            network=self.network,
+            repository_directory=REPOSITORY_DIRECTORY,
+            experiment=self.config.experiment,
+            logger=LOGGER,
+        )
 
     def start_servers(self) -> None:
+        self.queue_manager.start_sinks()
         if self._server_process is not None:
             return
         self._server_process = self.server_host.popen(
@@ -217,6 +225,8 @@ class ExperimentRunner:
         LOGGER.info("Started UDP echo server on %s (ports %s/%s)", self.server_host.name, self.config.probe_service.udp_port, self.config.probe_service.int_udp_port)
 
     def stop_servers(self) -> None:
+        self.queue_manager.stop_all_loads()
+        self.queue_manager.stop_sinks()
         if self._server_process is None:
             return
         self._server_process.terminate()
@@ -259,6 +269,14 @@ class ExperimentRunner:
                 delay_ms = int(event["delay_ms"])
                 self.set_path_extra_delay(path_name, delay_ms)
                 event_messages.append(f"set_path_extra_delay(path={path_name}, delay_ms={delay_ms})")
+            elif event["type"] == "start_path_congestion":
+                path_name = str(event["path"])
+                self.queue_manager.start_load(path_name)
+                event_messages.append(f"start_path_congestion(path={path_name})")
+            elif event["type"] == "stop_path_congestion":
+                path_name = str(event["path"])
+                self.queue_manager.stop_load(path_name)
+                event_messages.append(f"stop_path_congestion(path={path_name})")
             else:
                 event_messages.append(f"unknown_event({event})")
         return event_messages
@@ -275,6 +293,8 @@ class ExperimentRunner:
                 timeout_s=self.config.closed_loop.probe_timeout_s,
                 mode="int",
             )
+            if self.queue_manager.enabled:
+                result["aux_queue_avg"] = self.queue_manager.queue_delay_ms(path_name)
             return result
 
         probe_start = time.monotonic()
@@ -292,10 +312,11 @@ class ExperimentRunner:
         if self.telemetry_mode == "mode2":
             await asyncio.sleep(self.config.telemetry.sampling.drain_wait_s)
             sampling = self.controller.get_sampling_summary(path_name, probe_start)
-            result["aux_queue_avg"] = sampling["avg_queue_depth"]
             result["aux_residence_ms"] = sampling["avg_residence_ms"]
             result["aux_report_count"] = sampling["report_count"]
             result["aux_switches"] = sampling["switches"]
+        if self.queue_manager.enabled:
+            result["aux_queue_avg"] = self.queue_manager.queue_delay_ms(path_name)
         return result
 
     async def measure_traffic(self) -> dict[str, Any]:
@@ -321,7 +342,7 @@ class ExperimentRunner:
                 self.config.telemetry.int_mode.queue_weight,
                 self.config.telemetry.int_mode.residence_weight,
             )
-        return (0.0, 0.0)
+        return (self.config.telemetry.base.queue_weight, 0.0)
 
     def _score_result_ms(self, result: dict[str, Any]) -> float:
         avg_ms = result.get("avg_ms")
@@ -576,6 +597,7 @@ async def async_main(args: argparse.Namespace, network: Mininet, config: RunConf
     try:
         await controller.start()
         await controller.wait_until_ready(timeout_s=30.0)
+        runner.queue_manager.configure_profiles()
 
         LOGGER.info("Waiting %.1fs for FRR/BGP warm-up", args.warmup_s)
         await asyncio.sleep(args.warmup_s)
