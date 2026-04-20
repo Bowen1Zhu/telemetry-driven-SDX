@@ -81,6 +81,7 @@ def main() -> None:
     rtts_ms: list[float] = []
     int_queue_depths: list[float] = []
     int_residence_ms: list[float] = []
+    int_hop_counts: list[int] = []
     int_reports = 0
 
     for sequence in range(args.count):
@@ -109,6 +110,7 @@ def main() -> None:
                 if parsed["residence_ms"] is not None:
                     int_residence_ms.append(float(parsed["residence_ms"]))
                 if parsed["hop_count"]:
+                    int_hop_counts.append(int(parsed["hop_count"]))
                     int_reports += 1
         except socket.timeout:
             pass
@@ -131,6 +133,7 @@ def main() -> None:
         "aux_queue_avg": (statistics.mean(int_queue_depths) if int_queue_depths else None),
         "aux_residence_ms": (statistics.mean(int_residence_ms) if int_residence_ms else None),
         "aux_report_count": int_reports,
+        "hop_count": (max(int_hop_counts) if int_hop_counts else 0),
     }
     print(json.dumps(summary))
 

@@ -163,6 +163,15 @@ class GeneralizedClosedLoopRunner:
             )
         return (0.0, 0.0)
 
+    def _hop_count(self, result: dict[str, Any]) -> int:
+        value = result.get("hop_count")
+        if value is None:
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
     def _score_result_ms(self, result: dict[str, Any]) -> float:
         avg_ms = result.get("avg_ms")
         if avg_ms is None:
@@ -379,14 +388,14 @@ class GeneralizedClosedLoopRunner:
             "slow_aux_queue_avg": probe_results["slow"].get("aux_queue_avg"),
             "slow_aux_residence_ms": probe_results["slow"].get("aux_residence_ms"),
             "slow_aux_report_count": probe_results["slow"].get("aux_report_count"),
-            "slow_aux_hop_count": probe_results["slow"].get("hop_count"),
+            "slow_aux_hop_count": self._hop_count(probe_results["slow"]),
             "fast_probe_avg_ms": probe_results["fast"].get("avg_ms"),
             "fast_probe_loss_pct": probe_results["fast"].get("loss_pct"),
             "fast_probe_score_ms": self._score_result_ms(probe_results["fast"]),
             "fast_aux_queue_avg": probe_results["fast"].get("aux_queue_avg"),
             "fast_aux_residence_ms": probe_results["fast"].get("aux_residence_ms"),
             "fast_aux_report_count": probe_results["fast"].get("aux_report_count"),
-            "fast_aux_hop_count": probe_results["fast"].get("hop_count"),
+            "fast_aux_hop_count": self._hop_count(probe_results["fast"]),
         }
 
     async def run_closed_loop(self) -> None:
