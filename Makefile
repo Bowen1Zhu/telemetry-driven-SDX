@@ -11,7 +11,7 @@ P4_COMPILE_ARGS += --p4v 16
 P4_COMPILE_ARGS += --p4runtime-files $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).p4info.txtpb
 P4_COMPILE_ARGS += -o $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).json
 
-.PHONY: build run run-mode2 run-mode3 run-fixed-slow run-fixed-fast run-generalized run-generalized-validate run-generalized-closed-loop run-generalized-closed-loop-mode2 run-generalized-closed-loop-mode3 run-generalized-queue-mode1 run-generalized-queue-mode2 run-generalized-queue-mode3 clean
+.PHONY: build run run-mode2 run-mode3 run-fixed-slow run-fixed-fast run-generalized run-generalized-validate run-generalized-closed-loop run-generalized-closed-loop-mode2 run-generalized-closed-loop-mode3 run-generalized-queue-mode1 run-generalized-queue-mode2 run-generalized-queue-mode3 run-bgp-generalized run-bgp-generalized-mode2 run-bgp-generalized-mode3 run-bgp-reachability-validate run-bgp-diagnose clean
 
 all: build
 
@@ -84,6 +84,33 @@ run-generalized-queue-mode3:
 	$(MAKE) clean
 	$(MAKE) build
 	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized_queue_mode3.json --telemetry-mode mode3
+
+
+run-bgp-generalized:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_generalized_closed_loop.py --config config/run_config_bgp_generalized.json --telemetry-mode mode1
+
+run-bgp-generalized-mode2:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_generalized_closed_loop.py --config config/run_config_bgp_generalized_mode2.json --telemetry-mode mode2
+
+run-bgp-generalized-mode3:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_generalized_closed_loop.py --config config/run_config_bgp_generalized_mode3.json --telemetry-mode mode3
+
+run-bgp-reachability-validate:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_reachability_validation.py --config config/run_config_bgp_generalized.json
+
+
+run-bgp-diagnose:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_diagnose.py --config config/run_config_bgp_generalized.json
 
 clean:
 	sudo mn -c >/dev/null 2>&1 || true

@@ -26,10 +26,11 @@ sys.path.append(REPOSITORY_DIRECTORY)
 
 from controller.sdx_controller import RunConfig, SdxController, TrafficSessionConfig
 from networks import load_topology_class
-from scripts.run_sdx import configure_logging, ensure_parent_dirs, run_udp_probe_async
+from scripts.bgp_support import BgpReachabilityTracker, wait_for_bgp_readiness
 from scripts.queue_support import QueueScenarioManager
+from scripts.run_sdx import configure_logging, ensure_parent_dirs, run_udp_probe_async
 
-LOGGER = logging.getLogger("sdx_general_closed_loop")
+LOGGER = logging.getLogger("sdx_bgp_closed_loop")
 
 
 @dataclass
@@ -41,7 +42,7 @@ class SessionState:
     path_changes: list[dict[str, Any]] = field(default_factory=list)
 
 
-class GeneralizedClosedLoopRunner:
+class BgpAwareClosedLoopRunner:
     def __init__(
         self,
         network: Mininet,
@@ -77,6 +78,7 @@ class GeneralizedClosedLoopRunner:
             }
             for session in self.config.traffic_sessions
         }
+        self.group_by_name = {group.name: group for group in self.config.traffic_groups}
 
         self.rows: list[dict[str, Any]] = []
         self.csv_path = os.path.join(self.results_dir, "latest_run.csv")
@@ -87,6 +89,39 @@ class GeneralizedClosedLoopRunner:
             experiment=self.config.experiment,
             logger=LOGGER,
         )
+        self.bgp_tracker = BgpReachabilityTracker(network=self.network, config=self.config, logger=LOGGER)
+
+    async def prepare_initial_paths(self) -> None:
+        """Install the initial legal path for every session before warm-up traffic.
+
+        This ensures that warm-up probes and traffic use the same forwarding state as
+        the later closed-loop run, especially for sessions that are BGP-constrained to
+        a single legal path.
+        """
+        baseline = time.monotonic()
+        for session in self.config.traffic_sessions:
+            allowed_paths = self.bgp_tracker.allowed_paths_for_session(session.name)
+            if not allowed_paths:
+                continue
+            initial_path = allowed_paths[0]
+            await self.controller.set_session_path(session.name, initial_path)
+            state = self.session_states[session.name]
+            state.active_path = initial_path
+            state.last_switch_time = baseline
+            state.ema_by_path = {"slow": None, "fast": None}
+
+    async def prime_udp_paths(self) -> None:
+        """Send one best-effort round of UDP traffic/probes to populate ARP/MAC state.
+
+        The BGP-aware topology is more fragile than the earlier generalized topology.
+        A short ignored warm-up round helps populate ARP, MAC learning, and the newly
+        installed static /32 routes before we start recording measurements.
+        """
+        try:
+            await self.collect_probe_results()
+            await self.collect_traffic_results()
+        except Exception as exc:
+            LOGGER.warning("Initial UDP warm-up encountered %s: %r", type(exc).__name__, exc)
 
     def start_servers(self) -> None:
         self.queue_manager.start_sinks()
@@ -126,7 +161,10 @@ class GeneralizedClosedLoopRunner:
     def warm_up(self) -> None:
         for session in self.config.traffic_sessions:
             client = self.network.get(session.client_host)
-            client.cmd(f"ping -c 1 -W 1 {session.server_ip} >/dev/null 2>&1 || true")
+            server = self.network.get(session.server_host)
+            client_ip = self.group_by_name[session.forward_group].src_ip
+            client.cmd(f"ping -c 2 -W 1 {session.server_ip} >/dev/null 2>&1 || true")
+            server.cmd(f"ping -c 2 -W 1 {client_ip} >/dev/null 2>&1 || true")
 
     def _set_interface_delay(self, node_name: str, interface_name: str, delay_ms: int) -> None:
         node = self.network.get(node_name)
@@ -190,11 +228,12 @@ class GeneralizedClosedLoopRunner:
         except (TypeError, ValueError):
             return 0
 
-    def _score_result_ms(self, result: dict[str, Any]) -> float:
+    def _score_result_ms(self, result: dict[str, Any]) -> float | None:
+        if result.get("bgp_reachable") is False:
+            return None
         avg_ms = result.get("avg_ms")
         if avg_ms is None:
             return 10_000.0
-
         score = float(avg_ms) + (5.0 * float(result.get("loss_pct", 0.0)))
         queue_weight, residence_weight = self._telemetry_weights()
         aux_queue = result.get("aux_queue_avg")
@@ -224,23 +263,38 @@ class GeneralizedClosedLoopRunner:
 
     async def collect_probe_results(self) -> dict[str, dict[str, dict[str, Any]]]:
         tasks: dict[tuple[str, str], asyncio.Task[tuple[float, dict[str, Any]]]] = {}
-        for session in self.config.traffic_sessions:
-            for path_name in ("slow", "fast"):
-                tasks[(session.name, path_name)] = asyncio.create_task(
-                    self._run_probe_for_session_path(session, path_name)
-                )
-
-        raw_results = await asyncio.gather(*tasks.values())
-        combined: dict[str, dict[str, dict[str, Any]]] = {session.name: {} for session in self.config.traffic_sessions}
+        combined: dict[str, dict[str, dict[str, Any]]] = {
+            session.name: {
+                "slow": {"bgp_reachable": False, "aux_queue_avg": None, "aux_residence_ms": None, "aux_report_count": 0},
+                "fast": {"bgp_reachable": False, "aux_queue_avg": None, "aux_residence_ms": None, "aux_report_count": 0},
+            }
+            for session in self.config.traffic_sessions
+        }
         timing: dict[tuple[str, str], float] = {}
-        for (session_name, path_name), (start_time, result) in zip(tasks.keys(), raw_results):
-            combined[session_name][path_name] = result
-            timing[(session_name, path_name)] = start_time
+
+        for session in self.config.traffic_sessions:
+            allowed_paths = set(self.bgp_tracker.allowed_paths_for_session(session.name))
+            for path_name in ("slow", "fast"):
+                combined[session.name][path_name]["bgp_reachable"] = path_name in allowed_paths
+                if path_name in allowed_paths:
+                    tasks[(session.name, path_name)] = asyncio.create_task(
+                        self._run_probe_for_session_path(session, path_name)
+                    )
+
+        if tasks:
+            raw_results = await asyncio.gather(*tasks.values())
+            for (session_name, path_name), (start_time, result) in zip(tasks.keys(), raw_results):
+                result["bgp_reachable"] = True
+                combined[session_name][path_name].update(result)
+                timing[(session_name, path_name)] = start_time
 
         if self.telemetry_mode == "mode2":
             await asyncio.sleep(self.config.telemetry.sampling.drain_wait_s)
             for session in self.config.traffic_sessions:
+                allowed_paths = set(self.bgp_tracker.allowed_paths_for_session(session.name))
                 for path_name in ("slow", "fast"):
+                    if path_name not in allowed_paths:
+                        continue
                     sampling = self.controller.get_sampling_summary_for_session_path(
                         session.name,
                         path_name,
@@ -252,8 +306,10 @@ class GeneralizedClosedLoopRunner:
         if self.queue_manager.enabled:
             queue_by_path = {path_name: self.queue_manager.queue_delay_ms(path_name) for path_name in ("slow", "fast")}
             for session in self.config.traffic_sessions:
+                allowed_paths = set(self.bgp_tracker.allowed_paths_for_session(session.name))
                 for path_name in ("slow", "fast"):
-                    combined[session.name][path_name]["aux_queue_avg"] = queue_by_path[path_name]
+                    if path_name in allowed_paths:
+                        combined[session.name][path_name]["aux_queue_avg"] = queue_by_path[path_name]
         return combined
 
     async def collect_traffic_results(self) -> dict[str, dict[str, Any]]:
@@ -281,6 +337,9 @@ class GeneralizedClosedLoopRunner:
             state = self.session_states[session_name]
             for path_name, result in path_results.items():
                 sample = self._score_result_ms(result)
+                if sample is None:
+                    state.ema_by_path[path_name] = None
+                    continue
                 current = state.ema_by_path[path_name]
                 state.ema_by_path[path_name] = sample if current is None else (alpha * sample + (1.0 - alpha) * current)
 
@@ -293,10 +352,30 @@ class GeneralizedClosedLoopRunner:
         return base
 
     async def maybe_switch_session(self, state: SessionState, elapsed_s: float) -> str | None:
-        if any(value is None for value in state.ema_by_path.values()):
+        allowed_paths = self.bgp_tracker.allowed_paths_for_session(state.session.name)
+        if not allowed_paths:
+            return None
+        if len(allowed_paths) == 1:
+            only_path = allowed_paths[0]
+            if state.active_path == only_path:
+                return None
+            await self.controller.set_session_path(state.session.name, only_path)
+            state.active_path = only_path
+            state.last_switch_time = time.monotonic()
+            event = {
+                "time_s": round(elapsed_s, 3),
+                "new_path": only_path,
+                "improvement_ms": None,
+                "reason": "bgp_forced",
+            }
+            state.path_changes.append(event)
+            LOGGER.info("%s: BGP forced path -> %s", state.session.name, only_path)
+            return only_path
+
+        if any(state.ema_by_path[path_name] is None for path_name in allowed_paths):
             return None
 
-        best_path = min(state.ema_by_path, key=lambda path_name: self._score(state, path_name))
+        best_path = min(allowed_paths, key=lambda path_name: self._score(state, path_name))
         if best_path == state.active_path:
             return None
 
@@ -317,6 +396,7 @@ class GeneralizedClosedLoopRunner:
             "time_s": round(elapsed_s, 3),
             "new_path": best_path,
             "improvement_ms": round(improvement_ms, 3),
+            "reason": "score",
         }
         state.path_changes.append(event)
         LOGGER.info("%s: closed-loop switch -> %s (improvement %.2f ms)", state.session.name, best_path, improvement_ms)
@@ -325,31 +405,11 @@ class GeneralizedClosedLoopRunner:
     def write_csv(self) -> None:
         ensure_parent_dirs(self.csv_path)
         fieldnames = [
-            "elapsed_s",
-            "event",
-            "telemetry_mode",
-            "session",
-            "client_host",
-            "server_host",
-            "server_ip",
-            "active_path",
-            "switched_to",
-            "traffic_avg_ms",
-            "traffic_loss_pct",
-            "slow_probe_avg_ms",
-            "slow_probe_loss_pct",
-            "slow_probe_score_ms",
-            "slow_aux_queue_avg",
-            "slow_aux_residence_ms",
-            "slow_aux_report_count",
-            "slow_aux_hop_count",
-            "fast_probe_avg_ms",
-            "fast_probe_loss_pct",
-            "fast_probe_score_ms",
-            "fast_aux_queue_avg",
-            "fast_aux_residence_ms",
-            "fast_aux_report_count",
-            "fast_aux_hop_count",
+            "elapsed_s", "event", "telemetry_mode", "session", "client_host", "server_host", "server_ip",
+            "bgp_allowed_paths", "slow_bgp_reachable", "fast_bgp_reachable",
+            "active_path", "switched_to", "traffic_avg_ms", "traffic_loss_pct",
+            "slow_probe_avg_ms", "slow_probe_loss_pct", "slow_probe_score_ms", "slow_aux_queue_avg", "slow_aux_residence_ms", "slow_aux_report_count", "slow_aux_hop_count",
+            "fast_probe_avg_ms", "fast_probe_loss_pct", "fast_probe_score_ms", "fast_aux_queue_avg", "fast_aux_residence_ms", "fast_aux_report_count", "fast_aux_hop_count",
         ]
         with open(self.csv_path, "w", encoding="utf-8", newline="") as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -365,8 +425,8 @@ class GeneralizedClosedLoopRunner:
             "final_active_path_by_session": {},
             "path_changes_by_session": {},
             "mean_traffic_ms_by_session": {},
+            "bgp_allowed_paths_by_session": {},
         }
-
         all_values: list[float] = []
         for session in self.config.traffic_sessions:
             session_rows = [row for row in self.rows if row["session"] == session.name and row.get("traffic_avg_ms") is not None]
@@ -376,22 +436,14 @@ class GeneralizedClosedLoopRunner:
             summary["final_active_path_by_session"][session.name] = self.session_states[session.name].active_path
             summary["path_changes_by_session"][session.name] = self.session_states[session.name].path_changes
             summary["mean_traffic_ms_by_session"][session.name] = statistics.mean(values) if values else None
-
+            summary["bgp_allowed_paths_by_session"][session.name] = list(self.bgp_tracker.allowed_paths_for_session(session.name))
         summary["overall_mean_traffic_ms"] = statistics.mean(all_values) if all_values else None
-
         ensure_parent_dirs(self.summary_path)
         with open(self.summary_path, "w", encoding="utf-8") as summary_file:
             json.dump(summary, summary_file, indent=2)
 
-    def _build_row(
-        self,
-        elapsed_s: float,
-        event_messages: list[str],
-        state: SessionState,
-        switched_to: str | None,
-        traffic_result: dict[str, Any],
-        probe_results: dict[str, dict[str, Any]],
-    ) -> dict[str, Any]:
+    def _build_row(self, elapsed_s: float, event_messages: list[str], state: SessionState, switched_to: str | None, traffic_result: dict[str, Any], probe_results: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        allowed_paths = self.bgp_tracker.allowed_paths_for_session(state.session.name)
         return {
             "elapsed_s": round(elapsed_s, 3),
             "event": "; ".join(event_messages) if event_messages else None,
@@ -400,6 +452,9 @@ class GeneralizedClosedLoopRunner:
             "client_host": state.session.client_host,
             "server_host": state.session.server_host,
             "server_ip": state.session.server_ip,
+            "bgp_allowed_paths": ",".join(allowed_paths),
+            "slow_bgp_reachable": "slow" in allowed_paths,
+            "fast_bgp_reachable": "fast" in allowed_paths,
             "active_path": state.active_path,
             "switched_to": switched_to,
             "traffic_avg_ms": traffic_result.get("avg_ms"),
@@ -424,21 +479,29 @@ class GeneralizedClosedLoopRunner:
         duration_s = float(self.config.experiment.get("duration_s", 55.0))
         interval_s = self.config.closed_loop.probe_interval_s
 
-        await asyncio.gather(*(self.controller.set_session_path(session.name, "slow") for session in self.config.traffic_sessions))
+        self.bgp_tracker.refresh()
         baseline = time.monotonic() - self.config.closed_loop.hold_down_s
-        for state in self.session_states.values():
-            state.active_path = "slow"
+        for session in self.config.traffic_sessions:
+            allowed = self.bgp_tracker.allowed_paths_for_session(session.name)
+            initial_path = "slow" if "slow" in allowed else (allowed[0] if allowed else "slow")
+            try:
+                await self.controller.set_session_path(session.name, initial_path)
+            except Exception as exc:
+                LOGGER.warning("%s: failed to set initial path %s (%s): %r", session.name, initial_path, type(exc).__name__, exc)
+            state = self.session_states[session.name]
+            state.active_path = initial_path
             state.last_switch_time = baseline
+            state.ema_by_path = {"slow": None, "fast": None}
 
         start_time = time.monotonic()
         next_tick = start_time
-
         while True:
             now = time.monotonic()
             elapsed_s = now - start_time
             if elapsed_s > duration_s:
                 break
-
+            if self.bgp_tracker.refresh_each_interval:
+                self.bgp_tracker.refresh()
             event_messages = self.apply_due_events(elapsed_s)
             probe_results = await self.collect_probe_results()
             self.update_emas(probe_results)
@@ -449,33 +512,18 @@ class GeneralizedClosedLoopRunner:
                 switched_to[session.name] = await self.maybe_switch_session(state, elapsed_s)
 
             traffic_results = await self.collect_traffic_results()
-
             for session in self.config.traffic_sessions:
                 state = self.session_states[session.name]
-                row = self._build_row(
-                    elapsed_s=elapsed_s,
-                    event_messages=event_messages,
-                    state=state,
-                    switched_to=switched_to[session.name],
-                    traffic_result=traffic_results[session.name],
-                    probe_results=probe_results[session.name],
-                )
+                row = self._build_row(elapsed_s, event_messages, state, switched_to[session.name], traffic_results[session.name], probe_results[session.name])
                 self.rows.append(row)
-
             self.write_csv()
-
-            active_summary = ", ".join(
-                f"{session.name}:{self.session_states[session.name].active_path}"
-                for session in self.config.traffic_sessions
-            )
+            active_summary = ", ".join(f"{session.name}:{self.session_states[session.name].active_path}/{','.join(self.bgp_tracker.allowed_paths_for_session(session.name))}" for session in self.config.traffic_sessions)
             LOGGER.info("t=%.1fs mode=%s active_paths=[%s]", elapsed_s, self.telemetry_mode, active_summary)
-
             next_tick += interval_s
-            sleep_s = max(0.0, next_tick - time.monotonic())
-            await asyncio.sleep(sleep_s)
+            await asyncio.sleep(max(0.0, next_tick - time.monotonic()))
 
         self.write_summary()
-        LOGGER.info("Generalized multi-session closed-loop finished; results written to %s and %s", self.csv_path, self.summary_path)
+        LOGGER.info("BGP-aware generalized closed-loop finished; results written to %s and %s", self.csv_path, self.summary_path)
 
 
 async def async_main(args: argparse.Namespace, network: Mininet, config: RunConfig) -> None:
@@ -486,22 +534,30 @@ async def async_main(args: argparse.Namespace, network: Mininet, config: RunConf
         p4info_path=os.path.join(build_dir, "sdx_ixp.p4info.txtpb"),
         p4blob_path=os.path.join(build_dir, "sdx_ixp.json"),
     )
-    runner = GeneralizedClosedLoopRunner(
-        network=network,
-        controller=controller,
-        config=config,
-        results_dir=args.results_dir,
-        telemetry_mode=telemetry_mode,
-    )
+    runner = BgpAwareClosedLoopRunner(network=network, controller=controller, config=config, results_dir=args.results_dir, telemetry_mode=telemetry_mode)
     try:
         await controller.start()
         await controller.wait_until_ready(timeout_s=45.0)
         runner.queue_manager.configure_profiles()
-        LOGGER.info("Waiting %.1fs for FRR/BGP warm-up", args.warmup_s)
+        LOGGER.info("Waiting %.1fs for initial FRR/BGP warm-up", args.warmup_s)
         await asyncio.sleep(args.warmup_s)
+        await wait_for_bgp_readiness(
+            tracker=runner.bgp_tracker,
+            timeout_s=args.bgp_wait_timeout_s,
+            poll_s=args.bgp_poll_s,
+            logger=LOGGER,
+            require_expected=False,
+        )
+        runner.bgp_tracker.refresh()
+        runner.bgp_tracker.install_session_dataplane_routes()
+        await asyncio.sleep(3.0)
+        await runner.prepare_initial_paths()
         runner.warm_up()
         runner.start_servers()
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(2.0)
+        runner.warm_up()
+        await runner.prime_udp_paths()
+        runner.bgp_tracker.refresh()
         await runner.run_closed_loop()
     finally:
         runner.stop_servers()
@@ -509,24 +565,13 @@ async def async_main(args: argparse.Namespace, network: Mininet, config: RunConf
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run generalized multi-session closed-loop SDX")
-    parser.add_argument(
-        "--config",
-        default=os.path.join(REPOSITORY_DIRECTORY, "config/run_config_generalized.json"),
-        help="Path to the generalized json config file",
-    )
-    parser.add_argument(
-        "--results-dir",
-        default=os.path.join(REPOSITORY_DIRECTORY, "results/generalized_closed_loop"),
-        help="Directory for csv and json results",
-    )
-    parser.add_argument(
-        "--telemetry-mode",
-        choices=["mode1", "mode2", "mode3"],
-        default=None,
-        help="Override telemetry mode from the config file",
-    )
-    parser.add_argument("--warmup-s", type=float, default=18.0, help="Seconds to wait for FRR/BGP warm-up")
+    parser = argparse.ArgumentParser(description="Run BGP-aware generalized multi-session closed-loop SDX")
+    parser.add_argument("--config", default=os.path.join(REPOSITORY_DIRECTORY, "config/run_config_bgp_generalized.json"), help="Path to the BGP-aware generalized json config file")
+    parser.add_argument("--results-dir", default=os.path.join(REPOSITORY_DIRECTORY, "results/bgp_generalized_closed_loop"), help="Directory where CSV/JSON outputs are written")
+    parser.add_argument("--telemetry-mode", choices=["mode1", "mode2", "mode3"], default=None, help="Override telemetry mode from config")
+    parser.add_argument("--warmup-s", type=float, default=12.0, help="Initial seconds to wait before polling for BGP convergence")
+    parser.add_argument("--bgp-wait-timeout-s", type=float, default=45.0, help="Additional seconds to keep polling for BGP reachability")
+    parser.add_argument("--bgp-poll-s", type=float, default=2.0, help="Polling interval while waiting for BGP reachability")
     return parser.parse_args()
 
 
@@ -536,13 +581,11 @@ def main() -> None:
     setLogLevel("info")
     config = RunConfig.load(args.config)
     topology_class = load_topology_class(config.topology_name)
-    network = Mininet(topo=topology_class(), link=TCLink, autoSetMacs=False)
-    LOGGER.info("Starting Mininet network for topology %s", config.topology_name)
+    network = Mininet(topo=topology_class(), link=TCLink, controller=None, autoSetMacs=False)
     network.start()
     try:
         asyncio.run(async_main(args, network, config))
     finally:
-        LOGGER.info("Stopping Mininet network")
         network.stop()
 
 

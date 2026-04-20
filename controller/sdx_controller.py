@@ -151,6 +151,7 @@ class RunConfig:
     telemetry: TelemetryConfig
     path_links: dict[str, tuple[dict[str, str], ...]]
     experiment: dict[str, Any]
+    bgp_reachability: dict[str, Any]
 
     @classmethod
     def load(cls, config_path: str | pathlib.Path) -> "RunConfig":
@@ -275,6 +276,7 @@ class RunConfig:
             for path_name, items in raw.get("path_links", {}).items()
         }
         experiment = dict(raw.get("experiment", {}))
+        bgp_reachability = dict(raw.get("bgp_reachability", {}))
 
         demo_config = cls(
             topology_name=str(raw.get("topology_name", "sdx_run")),
@@ -288,6 +290,7 @@ class RunConfig:
             telemetry=telemetry,
             path_links=path_links,
             experiment=experiment,
+            bgp_reachability=bgp_reachability,
         )
         demo_config.validate()
         return demo_config
