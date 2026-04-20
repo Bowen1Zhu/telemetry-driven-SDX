@@ -11,7 +11,7 @@ P4_COMPILE_ARGS += --p4v 16
 P4_COMPILE_ARGS += --p4runtime-files $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).p4info.txtpb
 P4_COMPILE_ARGS += -o $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).json
 
-.PHONY: build run run-mode2 run-mode3 run-fixed-slow run-fixed-fast clean
+.PHONY: build run run-mode2 run-mode3 run-fixed-slow run-fixed-fast run-generalized run-generalized-validate clean
 
 all: build
 
@@ -43,6 +43,16 @@ run-fixed-fast:
 	$(MAKE) clean
 	$(MAKE) build
 	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path fast --config config/run_config.json
+
+run-generalized:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config_generalized.json
+
+run-generalized-validate:
+	$(MAKE) clean
+	$(MAKE) build
+	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_validation.py --config config/run_config_generalized.json
 
 clean:
 	sudo mn -c >/dev/null 2>&1 || true

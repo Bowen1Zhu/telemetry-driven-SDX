@@ -83,6 +83,24 @@ class ProbeServiceConfig:
 
 
 @dataclass(frozen=True)
+class TrafficSessionConfig:
+    name: str
+    client_host: str
+    server_host: str
+    server_ip: str
+    traffic_tos: int
+    forward_group: str
+    reverse_group: str
+
+
+@dataclass(frozen=True)
+class ValidationScenarioConfig:
+    name: str
+    description: str
+    assignments: dict[str, str]
+
+
+@dataclass(frozen=True)
 class ClosedLoopConfig:
     probe_interval_s: float
     probe_count: int
@@ -116,10 +134,13 @@ class TelemetryConfig:
 
 @dataclass(frozen=True)
 class RunConfig:
+    topology_name: str
     switches: dict[str, SwitchConfig]
     tenants: tuple[TenantConfig, ...]
     groups: tuple[GroupConfig, ...]
     probe_service: ProbeServiceConfig
+    traffic_sessions: tuple[TrafficSessionConfig, ...]
+    validation_scenarios: tuple[ValidationScenarioConfig, ...]
     closed_loop: ClosedLoopConfig
     telemetry: TelemetryConfig
     path_links: dict[str, tuple[dict[str, str], ...]]
@@ -193,6 +214,28 @@ class RunConfig:
             traffic_tos=int(raw["probe_service"]["traffic_tos"]),
         )
 
+        traffic_sessions = tuple(
+            TrafficSessionConfig(
+                name=str(entry["name"]),
+                client_host=str(entry["client_host"]),
+                server_host=str(entry["server_host"]),
+                server_ip=str(entry["server_ip"]),
+                traffic_tos=int(entry["traffic_tos"]),
+                forward_group=str(entry["forward_group"]),
+                reverse_group=str(entry["reverse_group"]),
+            )
+            for entry in raw.get("traffic_sessions", ())
+        )
+
+        validation_scenarios = tuple(
+            ValidationScenarioConfig(
+                name=str(entry["name"]),
+                description=str(entry.get("description", entry["name"])),
+                assignments={str(group_name): str(path_name) for group_name, path_name in dict(entry.get("assignments", {})).items()},
+            )
+            for entry in raw.get("validation_scenarios", ())
+        )
+
         closed_loop = ClosedLoopConfig(
             probe_interval_s=float(raw["closed_loop"]["probe_interval_s"]),
             probe_count=int(raw["closed_loop"]["probe_count"]),
@@ -224,10 +267,13 @@ class RunConfig:
         experiment = dict(raw.get("experiment", {}))
 
         demo_config = cls(
+            topology_name=str(raw.get("topology_name", "sdx_run")),
             switches=switches,
             tenants=tenants,
             groups=groups,
             probe_service=probe_service,
+            traffic_sessions=traffic_sessions,
+            validation_scenarios=validation_scenarios,
             closed_loop=closed_loop,
             telemetry=telemetry,
             path_links=path_links,
@@ -270,9 +316,36 @@ class RunConfig:
             if group.kind == "probe" and not group.path_name:
                 raise ValueError(f"Probe group {group.name} must include path_name")
 
+        group_names = {group.name for group in self.groups}
+        for session in self.traffic_sessions:
+            if session.forward_group not in group_names:
+                raise ValueError(f"Traffic session {session.name} refers to unknown forward_group {session.forward_group}")
+            if session.reverse_group not in group_names:
+                raise ValueError(f"Traffic session {session.name} refers to unknown reverse_group {session.reverse_group}")
+
+        for scenario in self.validation_scenarios:
+            if not scenario.assignments:
+                raise ValueError(f"Validation scenario {scenario.name} has no assignments")
+            for group_name, path_name in scenario.assignments.items():
+                group = next((candidate for candidate in self.groups if candidate.name == group_name), None)
+                if group is None:
+                    raise ValueError(f"Validation scenario {scenario.name} refers to unknown group {group_name}")
+                if path_name not in group.allowed_paths:
+                    raise ValueError(
+                        f"Validation scenario {scenario.name} assigns disallowed path {path_name} to group {group_name}; allowed={group.allowed_paths}"
+                    )
+
     @property
     def group_by_name(self) -> dict[str, GroupConfig]:
         return {group.name: group for group in self.groups}
+
+    @property
+    def traffic_session_by_name(self) -> dict[str, TrafficSessionConfig]:
+        return {session.name: session for session in self.traffic_sessions}
+
+    @property
+    def validation_scenario_by_name(self) -> dict[str, ValidationScenarioConfig]:
+        return {scenario.name: scenario for scenario in self.validation_scenarios}
 
     @property
     def groups_by_switch(self) -> dict[str, list[GroupConfig]]:

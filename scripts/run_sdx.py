@@ -24,7 +24,7 @@ REPOSITORY_DIRECTORY = os.path.abspath(os.path.join(SCRIPT_DIRECTORY, "../"))
 sys.path.append(REPOSITORY_DIRECTORY)
 
 from controller.sdx_controller import SdxController, RunConfig
-from networks.sdx_run.mininet.networks import Topology
+from networks import load_topology_class
 
 LOGGER = logging.getLogger("sdx_run")
 
@@ -556,8 +556,7 @@ class ExperimentRunner:
         LOGGER.info("Closed-loop run finished; results written to %s and %s", self.csv_path, self.summary_path)
 
 
-async def async_main(args: argparse.Namespace, network: Mininet) -> None:
-    config = RunConfig.load(args.config)
+async def async_main(args: argparse.Namespace, network: Mininet, config: RunConfig) -> None:
     telemetry_mode = args.telemetry_mode or config.telemetry.mode
     build_dir = os.path.join(REPOSITORY_DIRECTORY, "build/p4")
     controller = SdxController(
@@ -598,13 +597,15 @@ def main() -> None:
     configure_logging()
     setLogLevel("info")
 
-    topology = Topology()
+    config = RunConfig.load(args.config)
+    topology_class = load_topology_class(config.topology_name)
+    topology = topology_class()
     network = Mininet(topo=topology, link=TCLink, autoSetMacs=False)
 
-    LOGGER.info("Starting Mininet network")
+    LOGGER.info("Starting Mininet network for topology %s", config.topology_name)
     network.start()
     try:
-        asyncio.run(async_main(args, network))
+        asyncio.run(async_main(args, network, config))
     finally:
         LOGGER.info("Stopping Mininet network")
         network.stop()
