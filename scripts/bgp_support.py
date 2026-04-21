@@ -68,6 +68,10 @@ class BgpReachabilityTracker:
             str(path): str(router)
             for path, router in dict(raw.get("path_transit_router", {})).items()
         }
+        self.path_transit_routers: dict[str, tuple[str, ...]] = {
+            str(path): tuple(str(router) for router in routers)
+            for path, routers in dict(raw.get("path_transit_routers", {})).items()
+        }
 
         self.group_by_name = {group.name: group for group in self.config.traffic_groups}
         self.session_by_name = {session.name: session for session in self.config.traffic_sessions}
@@ -160,6 +164,13 @@ class BgpReachabilityTracker:
             return "as4r1"
         return None
 
+    def transit_routers_for_path(self, path_name: str) -> tuple[str, ...]:
+        value = self.path_transit_routers.get(path_name)
+        if value:
+            return value
+        single = self.transit_router_for_path(path_name)
+        return () if single is None else (single,)
+
     def install_session_dataplane_routes(self) -> None:
         """Install bootstrap /32 routes end-to-end for every session.
 
@@ -215,11 +226,10 @@ class BgpReachabilityTracker:
                 continue
 
             for path_name in allowed_paths:
-                transit_router = self.transit_router_for_path(path_name)
-                if transit_router is None:
-                    continue
-                self._install_host_route(transit_router, f"{server_ip}/32", dest_edge_peer)
-                self._install_host_route(transit_router, f"{client_ip}/32", source_edge_peer)
+                transit_routers = self.transit_routers_for_path(path_name)
+                for transit_router in transit_routers:
+                    self._install_host_route(transit_router, f"{server_ip}/32", dest_edge_peer)
+                    self._install_host_route(transit_router, f"{client_ip}/32", source_edge_peer)
 
     def _install_host_route(self, router_name: str, prefix: str, next_hop: str) -> None:
         """Install a bootstrap host route both in FRR and in the Linux FIB.

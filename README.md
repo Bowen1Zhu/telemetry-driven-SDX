@@ -40,3 +40,50 @@ Each run writes `latest_run.csv` and `latest_summary.json` under the relevant `r
 make run-bgp-diagnose
 ```
 
+
+
+## Larger loop with BGP and middle transit fabric
+
+A larger topology named `sdx_bgp_loop`. I keep the same end-host sessions as the BGP-aware model, but expands the middle of the network to three IXPs:
+
+- IXP1: left steering IXP
+- IXP2: shared middle exchange / loop-capable transit fabric
+- IXP3: right steering IXP
+
+Two end-to-end path classes remain visible to the SDX controller:
+
+- `slow = slow12 -> slow23`
+- `fast = fast12 -> fast23`
+
+BGP reachability validation:
+```bash
+make run-bgp-loop-reachability-validate
+```
+
+Closed-loop BGP-aware runs:
+```bash
+make run-bgp-loop-generalized
+make run-bgp-loop-generalized-mode2
+make run-bgp-loop-generalized-mode3
+```
+
+Diagnose:
+```bash
+make run-bgp-loop-diagnose
+```
+
+
+## Largest superloop with BGP
+
+I tried a even larger one `sdx_bgp_superloop`, with:
+- 4 edge routers (AS100/200/500/600)
+- 6 transit routers (slow12/23/34 and fast12/23/34)
+- 4 IXPs (outer P4 IXPs at 1 and 4; shared fabrics at 2 and 3)
+
+Commands:
+```bash
+make run-bgp-superloop-reachability-validate
+make run-bgp-superloop-generalized
+make run-bgp-superloop-generalized-mode2
+make run-bgp-superloop-generalized-mode3
+```
