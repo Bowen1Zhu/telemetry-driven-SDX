@@ -11,7 +11,7 @@ P4_COMPILE_ARGS += --p4v 16
 P4_COMPILE_ARGS += --p4runtime-files $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).p4info.txtpb
 P4_COMPILE_ARGS += -o $(BUILD_P4_DIR)/$(P4_PROGRAM_NAME).json
 
-.PHONY: build run run-mode2 run-mode3 run-fixed-slow run-fixed-fast run-generalized run-generalized-validate run-generalized-closed-loop run-generalized-closed-loop-mode2 run-generalized-closed-loop-mode3 run-generalized-queue-mode1 run-generalized-queue-mode2 run-generalized-queue-mode3 run-bgp-generalized run-bgp-generalized-mode2 run-bgp-generalized-mode3 run-bgp-reachability-validate run-bgp-diagnose clean
+.PHONY: build run run-fixed-slow run-fixed-fast run-ring4 run-ring4-fixed-via-ixp2 run-ring4-fixed-via-ixp4 clean
 
 all: build
 
@@ -22,95 +22,33 @@ build:
 run:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config.json
-
-run-mode2:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config_mode2.json --telemetry-mode mode2
-
-run-mode3:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config_mode3.json --telemetry-mode mode3
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop
 
 run-fixed-slow:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path slow --config config/run_config.json
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path slow
 
 run-fixed-fast:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path fast --config config/run_config.json
+	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode fixed --fixed-path fast
 
-run-generalized:
+
+run-ring4:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_sdx.py --mode closed-loop --config config/run_config_generalized.json
+	sudo $(PYTHON_INTERPRETER) scripts/run_ring4_closed_loop.py --mode closed-loop
 
-run-generalized-validate:
+run-ring4-fixed-via-ixp2:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_validation.py --config config/run_config_generalized.json
+	sudo $(PYTHON_INTERPRETER) scripts/run_ring4_closed_loop.py --mode fixed --fixed-path via_ixp2 --results-dir results/ring4_fixed_via_ixp2
 
-run-generalized-closed-loop:
+run-ring4-fixed-via-ixp4:
 	$(MAKE) clean
 	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized.json
-
-run-generalized-closed-loop-mode2:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized_mode2.json --telemetry-mode mode2
-
-run-generalized-closed-loop-mode3:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized_mode3.json --telemetry-mode mode3
-
-
-run-generalized-queue-mode1:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized_queue_mode1.json --telemetry-mode mode1
-
-run-generalized-queue-mode2:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized_queue_mode2.json --telemetry-mode mode2
-
-run-generalized-queue-mode3:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_generalized_closed_loop.py --config config/run_config_generalized_queue_mode3.json --telemetry-mode mode3
-
-
-run-bgp-generalized:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_generalized_closed_loop.py --config config/run_config_bgp_generalized.json --telemetry-mode mode1
-
-run-bgp-generalized-mode2:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_generalized_closed_loop.py --config config/run_config_bgp_generalized_mode2.json --telemetry-mode mode2
-
-run-bgp-generalized-mode3:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_generalized_closed_loop.py --config config/run_config_bgp_generalized_mode3.json --telemetry-mode mode3
-
-run-bgp-reachability-validate:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_reachability_validation.py --config config/run_config_bgp_generalized.json
-
-
-run-bgp-diagnose:
-	$(MAKE) clean
-	$(MAKE) build
-	sudo $(PYTHON_INTERPRETER) scripts/run_bgp_diagnose.py --config config/run_config_bgp_generalized.json
+	sudo $(PYTHON_INTERPRETER) scripts/run_ring4_closed_loop.py --mode fixed --fixed-path via_ixp4 --results-dir results/ring4_fixed_via_ixp4
 
 clean:
 	sudo mn -c >/dev/null 2>&1 || true

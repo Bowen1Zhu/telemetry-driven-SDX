@@ -1,0 +1,253 @@
+{
+  "switches": {
+    "ixp1s1": {
+      "grpc_address": "127.0.0.1:50001",
+      "device_id": 1,
+      "ports": [
+        1,
+        2,
+        3
+      ],
+      "paths": {
+        "via_ixp2": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:12:00:01"
+        },
+        "via_ixp4": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:41:00:02"
+        }
+      }
+    },
+    "ixp2s1": {
+      "grpc_address": "127.0.0.1:50002",
+      "device_id": 2,
+      "ports": [
+        1,
+        2
+      ],
+      "paths": {}
+    },
+    "ixp3s1": {
+      "grpc_address": "127.0.0.1:50003",
+      "device_id": 3,
+      "ports": [
+        1,
+        2,
+        3
+      ],
+      "paths": {
+        "via_ixp2": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:23:00:02"
+        },
+        "via_ixp4": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:34:00:01"
+        }
+      }
+    },
+    "ixp4s1": {
+      "grpc_address": "127.0.0.1:50004",
+      "device_id": 4,
+      "ports": [
+        1,
+        2
+      ],
+      "paths": {}
+    }
+  },
+  "tenants": [
+    {
+      "switch": "ixp1s1",
+      "tenant_id": 100,
+      "ingress_port": 1,
+      "name": "AS100 ingress"
+    },
+    {
+      "switch": "ixp3s1",
+      "tenant_id": 300,
+      "ingress_port": 1,
+      "name": "AS300 ingress"
+    }
+  ],
+  "groups": [
+    {
+      "name": "traffic_forward",
+      "switch": "ixp1s1",
+      "group_id": 100,
+      "policy_id": 100,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.3.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "via_ixp2",
+        "via_ixp4"
+      ],
+      "initial_path": "via_ixp2",
+      "kind": "traffic"
+    },
+    {
+      "name": "probe_via_ixp2_forward",
+      "switch": "ixp1s1",
+      "group_id": 101,
+      "policy_id": 101,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.3.101",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "via_ixp2"
+      ],
+      "initial_path": "via_ixp2",
+      "kind": "probe",
+      "path_name": "via_ixp2"
+    },
+    {
+      "name": "probe_via_ixp4_forward",
+      "switch": "ixp1s1",
+      "group_id": 102,
+      "policy_id": 102,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.3.101",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "via_ixp4"
+      ],
+      "initial_path": "via_ixp4",
+      "kind": "probe",
+      "path_name": "via_ixp4"
+    },
+    {
+      "name": "traffic_reverse",
+      "switch": "ixp3s1",
+      "group_id": 300,
+      "policy_id": 300,
+      "tenant_id": 300,
+      "src_ip": "8.1.3.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "via_ixp2",
+        "via_ixp4"
+      ],
+      "initial_path": "via_ixp2",
+      "kind": "traffic"
+    },
+    {
+      "name": "probe_via_ixp2_reverse",
+      "switch": "ixp3s1",
+      "group_id": 301,
+      "policy_id": 301,
+      "tenant_id": 300,
+      "src_ip": "8.1.3.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "via_ixp2"
+      ],
+      "initial_path": "via_ixp2",
+      "kind": "probe",
+      "path_name": "via_ixp2"
+    },
+    {
+      "name": "probe_via_ixp4_reverse",
+      "switch": "ixp3s1",
+      "group_id": 302,
+      "policy_id": 302,
+      "tenant_id": 300,
+      "src_ip": "8.1.3.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "via_ixp4"
+      ],
+      "initial_path": "via_ixp4",
+      "kind": "probe",
+      "path_name": "via_ixp4"
+    }
+  ],
+  "probe_service": {
+    "client_host": "as1h1",
+    "server_host": "as3h1",
+    "server_ip": "8.1.3.101",
+    "udp_port": 5000,
+    "traffic_tos": 184
+  },
+  "closed_loop": {
+    "probe_interval_s": 5.0,
+    "probe_count": 3,
+    "probe_timeout_s": 2.0,
+    "ema_alpha": 1.0,
+    "switch_penalty_ms": 20.0,
+    "min_improvement_ms": 20.0,
+    "hold_down_s": 0.0
+  },
+  "path_links": {
+    "via_ixp2": [
+      {
+        "node": "seg12r1",
+        "interface": "seg12r1-eth0"
+      },
+      {
+        "node": "seg12r1",
+        "interface": "seg12r1-eth1"
+      },
+      {
+        "node": "seg23r1",
+        "interface": "seg23r1-eth0"
+      },
+      {
+        "node": "seg23r1",
+        "interface": "seg23r1-eth1"
+      }
+    ],
+    "via_ixp4": [
+      {
+        "node": "seg41r1",
+        "interface": "seg41r1-eth0"
+      },
+      {
+        "node": "seg41r1",
+        "interface": "seg41r1-eth1"
+      },
+      {
+        "node": "seg34r1",
+        "interface": "seg34r1-eth0"
+      },
+      {
+        "node": "seg34r1",
+        "interface": "seg34r1-eth1"
+      }
+    ]
+  },
+  "experiment": {
+    "duration_s": 55,
+    "events": [
+      {
+        "time_s": 20,
+        "type": "set_path_extra_delay",
+        "path": "via_ixp2",
+        "delay_ms": 80
+      },
+      {
+        "time_s": 40,
+        "type": "set_path_extra_delay",
+        "path": "via_ixp2",
+        "delay_ms": 0
+      }
+    ],
+    "base_path_delay_ms": {
+      "via_ixp2": 10,
+      "via_ixp4": 40
+    }
+  }
+}

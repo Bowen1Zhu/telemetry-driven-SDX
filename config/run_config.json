@@ -3,11 +3,7 @@
     "ixp1s1": {
       "grpc_address": "127.0.0.1:50001",
       "device_id": 1,
-      "ports": [
-        1,
-        2,
-        3
-      ],
+      "ports": [1, 2, 3],
       "paths": {
         "slow": {
           "egress_port": 2,
@@ -17,17 +13,12 @@
           "egress_port": 3,
           "egress_mac": "f0:00:0d:01:04:00"
         }
-      },
-      "thrift_port": 9091
+      }
     },
     "ixp2s1": {
       "grpc_address": "127.0.0.1:50002",
       "device_id": 2,
-      "ports": [
-        1,
-        2,
-        3
-      ],
+      "ports": [1, 2, 3],
       "paths": {
         "slow": {
           "egress_port": 2,
@@ -37,8 +28,7 @@
           "egress_port": 3,
           "egress_mac": "f0:00:0d:01:04:01"
         }
-      },
-      "thrift_port": 9092
+      }
     }
   },
   "tenants": [
@@ -66,10 +56,7 @@
       "dst_ip": "8.1.2.101",
       "ip_proto": 17,
       "tos": 184,
-      "allowed_paths": [
-        "slow",
-        "fast"
-      ],
+      "allowed_paths": ["slow", "fast"],
       "initial_path": "slow",
       "kind": "traffic"
     },
@@ -83,9 +70,7 @@
       "dst_ip": "8.1.2.101",
       "ip_proto": 17,
       "tos": 40,
-      "allowed_paths": [
-        "slow"
-      ],
+      "allowed_paths": ["slow"],
       "initial_path": "slow",
       "kind": "probe",
       "path_name": "slow"
@@ -100,9 +85,7 @@
       "dst_ip": "8.1.2.101",
       "ip_proto": 17,
       "tos": 72,
-      "allowed_paths": [
-        "fast"
-      ],
+      "allowed_paths": ["fast"],
       "initial_path": "fast",
       "kind": "probe",
       "path_name": "fast"
@@ -117,10 +100,7 @@
       "dst_ip": "8.1.1.101",
       "ip_proto": 17,
       "tos": 184,
-      "allowed_paths": [
-        "slow",
-        "fast"
-      ],
+      "allowed_paths": ["slow", "fast"],
       "initial_path": "slow",
       "kind": "traffic"
     },
@@ -134,9 +114,7 @@
       "dst_ip": "8.1.1.101",
       "ip_proto": 17,
       "tos": 40,
-      "allowed_paths": [
-        "slow"
-      ],
+      "allowed_paths": ["slow"],
       "initial_path": "slow",
       "kind": "probe",
       "path_name": "slow"
@@ -151,9 +129,7 @@
       "dst_ip": "8.1.1.101",
       "ip_proto": 17,
       "tos": 72,
-      "allowed_paths": [
-        "fast"
-      ],
+      "allowed_paths": ["fast"],
       "initial_path": "fast",
       "kind": "probe",
       "path_name": "fast"
@@ -164,7 +140,6 @@
     "server_host": "as2h1",
     "server_ip": "8.1.2.101",
     "udp_port": 5000,
-    "int_udp_port": 5001,
     "traffic_tos": 184
   },
   "closed_loop": {
@@ -172,8 +147,8 @@
     "probe_count": 3,
     "probe_timeout_s": 2.0,
     "ema_alpha": 0.6,
-    "switch_penalty_ms": 10.0,
-    "min_improvement_ms": 10.0,
+    "switch_penalty_ms": 80.0,
+    "min_improvement_ms": 50.0,
     "hold_down_s": 8.0
   },
   "path_links": {
@@ -212,19 +187,5 @@
         "delay_ms": 0
       }
     ]
-  },
-  "telemetry": {
-    "mode": "mode1",
-    "sampling": {
-      "sample_every_n": 1,
-      "queue_weight": 0.0,
-      "residence_weight": 0.0,
-      "drain_wait_s": 0.2
-    },
-    "int": {
-      "udp_port": 5001,
-      "queue_weight": 0.0,
-      "residence_weight": 0.0
-    }
   }
 }
