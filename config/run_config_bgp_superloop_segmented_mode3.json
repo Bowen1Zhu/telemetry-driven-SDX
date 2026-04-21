@@ -1,0 +1,1428 @@
+{
+  "topology_name": "sdx_bgp_superloop_segmented",
+  "switches": {
+    "ixp1s1": {
+      "grpc_address": "127.0.0.1:50001",
+      "device_id": 1,
+      "thrift_port": 9091,
+      "ports": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paths": {
+        "slow": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:21:31:00"
+        },
+        "fast": {
+          "egress_port": 4,
+          "egress_mac": "f0:00:0d:21:41:00"
+        },
+        "to_as100": {
+          "egress_port": 1,
+          "egress_mac": "f0:00:0d:21:01:01"
+        },
+        "to_as500": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:21:05:01"
+        },
+        "ixp1_probe_slow": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:21:31:00"
+        },
+        "ixp1_probe_fast": {
+          "egress_port": 4,
+          "egress_mac": "f0:00:0d:21:41:00"
+        }
+      }
+    },
+    "ixp2s1": {
+      "grpc_address": "127.0.0.1:50002",
+      "device_id": 2,
+      "thrift_port": 9092,
+      "ports": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paths": {
+        "ixp2_slow_fwd": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:21:32:00"
+        },
+        "ixp2_fast_fwd": {
+          "egress_port": 4,
+          "egress_mac": "f0:00:0d:21:42:00"
+        },
+        "ixp2_slow_rev": {
+          "egress_port": 1,
+          "egress_mac": "f0:00:0d:21:31:01"
+        },
+        "ixp2_fast_rev": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:21:41:01"
+        }
+      }
+    },
+    "ixp3s1": {
+      "grpc_address": "127.0.0.1:50003",
+      "device_id": 3,
+      "thrift_port": 9093,
+      "ports": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paths": {
+        "ixp3_slow_fwd": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:21:33:00"
+        },
+        "ixp3_fast_fwd": {
+          "egress_port": 4,
+          "egress_mac": "f0:00:0d:21:43:00"
+        },
+        "ixp3_slow_rev": {
+          "egress_port": 1,
+          "egress_mac": "f0:00:0d:21:32:01"
+        },
+        "ixp3_fast_rev": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:21:42:01"
+        }
+      }
+    },
+    "ixp4s1": {
+      "grpc_address": "127.0.0.1:50004",
+      "device_id": 4,
+      "thrift_port": 9094,
+      "ports": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "paths": {
+        "slow": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:21:33:01"
+        },
+        "fast": {
+          "egress_port": 4,
+          "egress_mac": "f0:00:0d:21:43:01"
+        },
+        "to_as200": {
+          "egress_port": 1,
+          "egress_mac": "f0:00:0d:21:02:01"
+        },
+        "to_as600": {
+          "egress_port": 2,
+          "egress_mac": "f0:00:0d:21:06:01"
+        },
+        "ixp4_probe_slow": {
+          "egress_port": 3,
+          "egress_mac": "f0:00:0d:21:33:01"
+        },
+        "ixp4_probe_fast": {
+          "egress_port": 4,
+          "egress_mac": "f0:00:0d:21:43:01"
+        }
+      }
+    }
+  },
+  "tenants": [
+    {
+      "switch": "ixp1s1",
+      "tenant_id": 100,
+      "ingress_port": 1,
+      "name": "AS100 ingress"
+    },
+    {
+      "switch": "ixp1s1",
+      "tenant_id": 500,
+      "ingress_port": 2,
+      "name": "AS500 ingress"
+    },
+    {
+      "switch": "ixp1s1",
+      "tenant_id": 9000,
+      "ingress_port": 3,
+      "name": "reverse from slow12"
+    },
+    {
+      "switch": "ixp1s1",
+      "tenant_id": 9000,
+      "ingress_port": 4,
+      "name": "reverse from fast12"
+    },
+    {
+      "switch": "ixp2s1",
+      "tenant_id": 1200,
+      "ingress_port": 1,
+      "name": "from slow12"
+    },
+    {
+      "switch": "ixp2s1",
+      "tenant_id": 1200,
+      "ingress_port": 2,
+      "name": "from fast12"
+    },
+    {
+      "switch": "ixp2s1",
+      "tenant_id": 2300,
+      "ingress_port": 3,
+      "name": "from slow23 reverse"
+    },
+    {
+      "switch": "ixp2s1",
+      "tenant_id": 2300,
+      "ingress_port": 4,
+      "name": "from fast23 reverse"
+    },
+    {
+      "switch": "ixp3s1",
+      "tenant_id": 2301,
+      "ingress_port": 1,
+      "name": "from slow23"
+    },
+    {
+      "switch": "ixp3s1",
+      "tenant_id": 2301,
+      "ingress_port": 2,
+      "name": "from fast23"
+    },
+    {
+      "switch": "ixp3s1",
+      "tenant_id": 3400,
+      "ingress_port": 3,
+      "name": "from slow34 reverse"
+    },
+    {
+      "switch": "ixp3s1",
+      "tenant_id": 3400,
+      "ingress_port": 4,
+      "name": "from fast34 reverse"
+    },
+    {
+      "switch": "ixp4s1",
+      "tenant_id": 200,
+      "ingress_port": 1,
+      "name": "AS200 ingress"
+    },
+    {
+      "switch": "ixp4s1",
+      "tenant_id": 600,
+      "ingress_port": 2,
+      "name": "AS600 ingress"
+    },
+    {
+      "switch": "ixp4s1",
+      "tenant_id": 9400,
+      "ingress_port": 3,
+      "name": "forward from slow34"
+    },
+    {
+      "switch": "ixp4s1",
+      "tenant_id": 9400,
+      "ingress_port": 4,
+      "name": "forward from fast34"
+    }
+  ],
+  "groups": [
+    {
+      "name": "traffic_100_200_ixp1_fwd",
+      "switch": "ixp1s1",
+      "group_id": 100,
+      "policy_id": 100,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp2_fwd",
+      "switch": "ixp2s1",
+      "group_id": 101,
+      "policy_id": 101,
+      "tenant_id": 1200,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "ixp2_slow_fwd",
+        "ixp2_fast_fwd"
+      ],
+      "initial_path": "ixp2_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp3_fwd",
+      "switch": "ixp3s1",
+      "group_id": 102,
+      "policy_id": 102,
+      "tenant_id": 2301,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "ixp3_slow_fwd",
+        "ixp3_fast_fwd"
+      ],
+      "initial_path": "ixp3_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp4_fwd_exit",
+      "switch": "ixp4s1",
+      "group_id": 103,
+      "policy_id": 103,
+      "tenant_id": 9400,
+      "src_ip": "8.1.1.101",
+      "dst_ip": "8.1.2.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "to_as200"
+      ],
+      "initial_path": "to_as200",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp4_rev",
+      "switch": "ixp4s1",
+      "group_id": 104,
+      "policy_id": 104,
+      "tenant_id": 200,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp3_rev",
+      "switch": "ixp3s1",
+      "group_id": 105,
+      "policy_id": 105,
+      "tenant_id": 3400,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "ixp3_slow_rev",
+        "ixp3_fast_rev"
+      ],
+      "initial_path": "ixp3_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp2_rev",
+      "switch": "ixp2s1",
+      "group_id": 106,
+      "policy_id": 106,
+      "tenant_id": 2300,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "ixp2_slow_rev",
+        "ixp2_fast_rev"
+      ],
+      "initial_path": "ixp2_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_200_ixp1_rev_exit",
+      "switch": "ixp1s1",
+      "group_id": 107,
+      "policy_id": 107,
+      "tenant_id": 9000,
+      "src_ip": "8.1.2.101",
+      "dst_ip": "8.1.1.101",
+      "ip_proto": 17,
+      "tos": 184,
+      "allowed_paths": [
+        "to_as100"
+      ],
+      "initial_path": "to_as100",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp1_fwd",
+      "switch": "ixp1s1",
+      "group_id": 108,
+      "policy_id": 108,
+      "tenant_id": 100,
+      "src_ip": "8.1.1.102",
+      "dst_ip": "8.1.6.101",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp2_fwd",
+      "switch": "ixp2s1",
+      "group_id": 109,
+      "policy_id": 109,
+      "tenant_id": 1200,
+      "src_ip": "8.1.1.102",
+      "dst_ip": "8.1.6.101",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "ixp2_slow_fwd",
+        "ixp2_fast_fwd"
+      ],
+      "initial_path": "ixp2_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp3_fwd",
+      "switch": "ixp3s1",
+      "group_id": 110,
+      "policy_id": 110,
+      "tenant_id": 2301,
+      "src_ip": "8.1.1.102",
+      "dst_ip": "8.1.6.101",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "ixp3_slow_fwd",
+        "ixp3_fast_fwd"
+      ],
+      "initial_path": "ixp3_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp4_fwd_exit",
+      "switch": "ixp4s1",
+      "group_id": 111,
+      "policy_id": 111,
+      "tenant_id": 9400,
+      "src_ip": "8.1.1.102",
+      "dst_ip": "8.1.6.101",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "to_as600"
+      ],
+      "initial_path": "to_as600",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp4_rev",
+      "switch": "ixp4s1",
+      "group_id": 112,
+      "policy_id": 112,
+      "tenant_id": 600,
+      "src_ip": "8.1.6.101",
+      "dst_ip": "8.1.1.102",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp3_rev",
+      "switch": "ixp3s1",
+      "group_id": 113,
+      "policy_id": 113,
+      "tenant_id": 3400,
+      "src_ip": "8.1.6.101",
+      "dst_ip": "8.1.1.102",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "ixp3_slow_rev",
+        "ixp3_fast_rev"
+      ],
+      "initial_path": "ixp3_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp2_rev",
+      "switch": "ixp2s1",
+      "group_id": 114,
+      "policy_id": 114,
+      "tenant_id": 2300,
+      "src_ip": "8.1.6.101",
+      "dst_ip": "8.1.1.102",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "ixp2_slow_rev",
+        "ixp2_fast_rev"
+      ],
+      "initial_path": "ixp2_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_100_600_ixp1_rev_exit",
+      "switch": "ixp1s1",
+      "group_id": 115,
+      "policy_id": 115,
+      "tenant_id": 9000,
+      "src_ip": "8.1.6.101",
+      "dst_ip": "8.1.1.102",
+      "ip_proto": 17,
+      "tos": 188,
+      "allowed_paths": [
+        "to_as100"
+      ],
+      "initial_path": "to_as100",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp1_fwd",
+      "switch": "ixp1s1",
+      "group_id": 116,
+      "policy_id": 116,
+      "tenant_id": 500,
+      "src_ip": "8.1.5.101",
+      "dst_ip": "8.1.2.102",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp2_fwd",
+      "switch": "ixp2s1",
+      "group_id": 117,
+      "policy_id": 117,
+      "tenant_id": 1200,
+      "src_ip": "8.1.5.101",
+      "dst_ip": "8.1.2.102",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "ixp2_slow_fwd",
+        "ixp2_fast_fwd"
+      ],
+      "initial_path": "ixp2_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp3_fwd",
+      "switch": "ixp3s1",
+      "group_id": 118,
+      "policy_id": 118,
+      "tenant_id": 2301,
+      "src_ip": "8.1.5.101",
+      "dst_ip": "8.1.2.102",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "ixp3_slow_fwd",
+        "ixp3_fast_fwd"
+      ],
+      "initial_path": "ixp3_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp4_fwd_exit",
+      "switch": "ixp4s1",
+      "group_id": 119,
+      "policy_id": 119,
+      "tenant_id": 9400,
+      "src_ip": "8.1.5.101",
+      "dst_ip": "8.1.2.102",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "to_as200"
+      ],
+      "initial_path": "to_as200",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp4_rev",
+      "switch": "ixp4s1",
+      "group_id": 120,
+      "policy_id": 120,
+      "tenant_id": 200,
+      "src_ip": "8.1.2.102",
+      "dst_ip": "8.1.5.101",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp3_rev",
+      "switch": "ixp3s1",
+      "group_id": 121,
+      "policy_id": 121,
+      "tenant_id": 3400,
+      "src_ip": "8.1.2.102",
+      "dst_ip": "8.1.5.101",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "ixp3_slow_rev",
+        "ixp3_fast_rev"
+      ],
+      "initial_path": "ixp3_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp2_rev",
+      "switch": "ixp2s1",
+      "group_id": 122,
+      "policy_id": 122,
+      "tenant_id": 2300,
+      "src_ip": "8.1.2.102",
+      "dst_ip": "8.1.5.101",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "ixp2_slow_rev",
+        "ixp2_fast_rev"
+      ],
+      "initial_path": "ixp2_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_200_ixp1_rev_exit",
+      "switch": "ixp1s1",
+      "group_id": 123,
+      "policy_id": 123,
+      "tenant_id": 9000,
+      "src_ip": "8.1.2.102",
+      "dst_ip": "8.1.5.101",
+      "ip_proto": 17,
+      "tos": 192,
+      "allowed_paths": [
+        "to_as500"
+      ],
+      "initial_path": "to_as500",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp1_fwd",
+      "switch": "ixp1s1",
+      "group_id": 124,
+      "policy_id": 124,
+      "tenant_id": 500,
+      "src_ip": "8.1.5.102",
+      "dst_ip": "8.1.6.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp2_fwd",
+      "switch": "ixp2s1",
+      "group_id": 125,
+      "policy_id": 125,
+      "tenant_id": 1200,
+      "src_ip": "8.1.5.102",
+      "dst_ip": "8.1.6.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "ixp2_slow_fwd",
+        "ixp2_fast_fwd"
+      ],
+      "initial_path": "ixp2_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp3_fwd",
+      "switch": "ixp3s1",
+      "group_id": 126,
+      "policy_id": 126,
+      "tenant_id": 2301,
+      "src_ip": "8.1.5.102",
+      "dst_ip": "8.1.6.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "ixp3_slow_fwd",
+        "ixp3_fast_fwd"
+      ],
+      "initial_path": "ixp3_slow_fwd",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp4_fwd_exit",
+      "switch": "ixp4s1",
+      "group_id": 127,
+      "policy_id": 127,
+      "tenant_id": 9400,
+      "src_ip": "8.1.5.102",
+      "dst_ip": "8.1.6.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "to_as600"
+      ],
+      "initial_path": "to_as600",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp4_rev",
+      "switch": "ixp4s1",
+      "group_id": 128,
+      "policy_id": 128,
+      "tenant_id": 600,
+      "src_ip": "8.1.6.102",
+      "dst_ip": "8.1.5.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "slow",
+        "fast"
+      ],
+      "initial_path": "slow",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp3_rev",
+      "switch": "ixp3s1",
+      "group_id": 129,
+      "policy_id": 129,
+      "tenant_id": 3400,
+      "src_ip": "8.1.6.102",
+      "dst_ip": "8.1.5.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "ixp3_slow_rev",
+        "ixp3_fast_rev"
+      ],
+      "initial_path": "ixp3_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp2_rev",
+      "switch": "ixp2s1",
+      "group_id": 130,
+      "policy_id": 130,
+      "tenant_id": 2300,
+      "src_ip": "8.1.6.102",
+      "dst_ip": "8.1.5.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "ixp2_slow_rev",
+        "ixp2_fast_rev"
+      ],
+      "initial_path": "ixp2_slow_rev",
+      "kind": "traffic"
+    },
+    {
+      "name": "traffic_500_600_ixp1_rev_exit",
+      "switch": "ixp1s1",
+      "group_id": 131,
+      "policy_id": 131,
+      "tenant_id": 9000,
+      "src_ip": "8.1.6.102",
+      "dst_ip": "8.1.5.102",
+      "ip_proto": 17,
+      "tos": 196,
+      "allowed_paths": [
+        "to_as500"
+      ],
+      "initial_path": "to_as500",
+      "kind": "traffic"
+    },
+    {
+      "name": "probe_ixp1_fwd_slow",
+      "switch": "ixp1s1",
+      "group_id": 132,
+      "policy_id": 132,
+      "tenant_id": 100,
+      "src_ip": "8.2.1.1",
+      "dst_ip": "100.200.31.1",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "ixp1_probe_slow"
+      ],
+      "initial_path": "ixp1_probe_slow",
+      "kind": "probe",
+      "path_name": "ixp1_probe_slow"
+    },
+    {
+      "name": "probe_ixp1_fwd_fast",
+      "switch": "ixp1s1",
+      "group_id": 133,
+      "policy_id": 133,
+      "tenant_id": 100,
+      "src_ip": "8.2.1.1",
+      "dst_ip": "100.200.41.1",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "ixp1_probe_fast"
+      ],
+      "initial_path": "ixp1_probe_fast",
+      "kind": "probe",
+      "path_name": "ixp1_probe_fast"
+    },
+    {
+      "name": "probe_ixp2_fwd_slow",
+      "switch": "ixp2s1",
+      "group_id": 134,
+      "policy_id": 134,
+      "tenant_id": 1200,
+      "src_ip": "8.2.2.12",
+      "dst_ip": "100.200.32.1",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "ixp2_slow_fwd"
+      ],
+      "initial_path": "ixp2_slow_fwd",
+      "kind": "probe",
+      "path_name": "ixp2_slow_fwd"
+    },
+    {
+      "name": "probe_ixp2_fwd_fast",
+      "switch": "ixp2s1",
+      "group_id": 135,
+      "policy_id": 135,
+      "tenant_id": 1200,
+      "src_ip": "8.2.2.12",
+      "dst_ip": "100.200.42.1",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "ixp2_fast_fwd"
+      ],
+      "initial_path": "ixp2_fast_fwd",
+      "kind": "probe",
+      "path_name": "ixp2_fast_fwd"
+    },
+    {
+      "name": "probe_ixp3_fwd_slow",
+      "switch": "ixp3s1",
+      "group_id": 136,
+      "policy_id": 136,
+      "tenant_id": 2301,
+      "src_ip": "8.2.3.22",
+      "dst_ip": "100.200.33.1",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "ixp3_slow_fwd"
+      ],
+      "initial_path": "ixp3_slow_fwd",
+      "kind": "probe",
+      "path_name": "ixp3_slow_fwd"
+    },
+    {
+      "name": "probe_ixp3_fwd_fast",
+      "switch": "ixp3s1",
+      "group_id": 137,
+      "policy_id": 137,
+      "tenant_id": 2301,
+      "src_ip": "8.2.3.22",
+      "dst_ip": "100.200.43.1",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "ixp3_fast_fwd"
+      ],
+      "initial_path": "ixp3_fast_fwd",
+      "kind": "probe",
+      "path_name": "ixp3_fast_fwd"
+    },
+    {
+      "name": "probe_ixp4_rev_slow",
+      "switch": "ixp4s1",
+      "group_id": 138,
+      "policy_id": 138,
+      "tenant_id": 200,
+      "src_ip": "8.2.4.1",
+      "dst_ip": "100.200.33.1",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "ixp4_probe_slow"
+      ],
+      "initial_path": "ixp4_probe_slow",
+      "kind": "probe",
+      "path_name": "ixp4_probe_slow"
+    },
+    {
+      "name": "probe_ixp4_rev_fast",
+      "switch": "ixp4s1",
+      "group_id": 139,
+      "policy_id": 139,
+      "tenant_id": 200,
+      "src_ip": "8.2.4.1",
+      "dst_ip": "100.200.43.1",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "ixp4_probe_fast"
+      ],
+      "initial_path": "ixp4_probe_fast",
+      "kind": "probe",
+      "path_name": "ixp4_probe_fast"
+    },
+    {
+      "name": "probe_ixp3_rev_slow",
+      "switch": "ixp3s1",
+      "group_id": 140,
+      "policy_id": 140,
+      "tenant_id": 3400,
+      "src_ip": "8.2.3.32",
+      "dst_ip": "100.200.32.1",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "ixp3_slow_rev"
+      ],
+      "initial_path": "ixp3_slow_rev",
+      "kind": "probe",
+      "path_name": "ixp3_slow_rev"
+    },
+    {
+      "name": "probe_ixp3_rev_fast",
+      "switch": "ixp3s1",
+      "group_id": 141,
+      "policy_id": 141,
+      "tenant_id": 3400,
+      "src_ip": "8.2.3.32",
+      "dst_ip": "100.200.42.1",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "ixp3_fast_rev"
+      ],
+      "initial_path": "ixp3_fast_rev",
+      "kind": "probe",
+      "path_name": "ixp3_fast_rev"
+    },
+    {
+      "name": "probe_ixp2_rev_slow",
+      "switch": "ixp2s1",
+      "group_id": 142,
+      "policy_id": 142,
+      "tenant_id": 2300,
+      "src_ip": "8.2.2.22",
+      "dst_ip": "100.200.31.1",
+      "ip_proto": 17,
+      "tos": 40,
+      "allowed_paths": [
+        "ixp2_slow_rev"
+      ],
+      "initial_path": "ixp2_slow_rev",
+      "kind": "probe",
+      "path_name": "ixp2_slow_rev"
+    },
+    {
+      "name": "probe_ixp2_rev_fast",
+      "switch": "ixp2s1",
+      "group_id": 143,
+      "policy_id": 143,
+      "tenant_id": 2300,
+      "src_ip": "8.2.2.22",
+      "dst_ip": "100.200.41.1",
+      "ip_proto": 17,
+      "tos": 72,
+      "allowed_paths": [
+        "ixp2_fast_rev"
+      ],
+      "initial_path": "ixp2_fast_rev",
+      "kind": "probe",
+      "path_name": "ixp2_fast_rev"
+    }
+  ],
+  "probe_service": {
+    "client_host": "as1h1",
+    "server_host": "as2h1",
+    "server_ip": "8.1.2.101",
+    "udp_port": 5000,
+    "int_udp_port": 5001,
+    "traffic_tos": 184
+  },
+  "traffic_sessions": [
+    {
+      "name": "session_100_to_200",
+      "client_host": "as1h1",
+      "server_host": "as2h1",
+      "server_ip": "8.1.2.101",
+      "traffic_tos": 184,
+      "forward_group": "traffic_100_200_ixp1_fwd",
+      "reverse_group": "traffic_100_200_ixp4_rev"
+    },
+    {
+      "name": "session_100_to_600",
+      "client_host": "as1h2",
+      "server_host": "as6h1",
+      "server_ip": "8.1.6.101",
+      "traffic_tos": 188,
+      "forward_group": "traffic_100_600_ixp1_fwd",
+      "reverse_group": "traffic_100_600_ixp4_rev"
+    },
+    {
+      "name": "session_500_to_200",
+      "client_host": "as5h1",
+      "server_host": "as2h2",
+      "server_ip": "8.1.2.102",
+      "traffic_tos": 192,
+      "forward_group": "traffic_500_200_ixp1_fwd",
+      "reverse_group": "traffic_500_200_ixp4_rev"
+    },
+    {
+      "name": "session_500_to_600",
+      "client_host": "as5h2",
+      "server_host": "as6h2",
+      "server_ip": "8.1.6.102",
+      "traffic_tos": 196,
+      "forward_group": "traffic_500_600_ixp1_fwd",
+      "reverse_group": "traffic_500_600_ixp4_rev"
+    }
+  ],
+  "validation_scenarios": [],
+  "closed_loop": {
+    "probe_interval_s": 5.0,
+    "probe_count": 3,
+    "probe_timeout_s": 2.0,
+    "ema_alpha": 1.0,
+    "switch_penalty_ms": 25.0,
+    "min_improvement_ms": 25.0,
+    "hold_down_s": 8.0
+  },
+  "path_links": {
+    "seg12_slow": [
+      {
+        "node": "slow12r1",
+        "interface": "slow12r1-eth0"
+      },
+      {
+        "node": "slow12r1",
+        "interface": "slow12r1-eth1"
+      }
+    ],
+    "seg12_fast": [
+      {
+        "node": "fast12r1",
+        "interface": "fast12r1-eth0"
+      },
+      {
+        "node": "fast12r1",
+        "interface": "fast12r1-eth1"
+      }
+    ],
+    "seg23_slow": [
+      {
+        "node": "slow23r1",
+        "interface": "slow23r1-eth0"
+      },
+      {
+        "node": "slow23r1",
+        "interface": "slow23r1-eth1"
+      }
+    ],
+    "seg23_fast": [
+      {
+        "node": "fast23r1",
+        "interface": "fast23r1-eth0"
+      },
+      {
+        "node": "fast23r1",
+        "interface": "fast23r1-eth1"
+      }
+    ],
+    "seg34_slow": [
+      {
+        "node": "slow34r1",
+        "interface": "slow34r1-eth0"
+      },
+      {
+        "node": "slow34r1",
+        "interface": "slow34r1-eth1"
+      }
+    ],
+    "seg34_fast": [
+      {
+        "node": "fast34r1",
+        "interface": "fast34r1-eth0"
+      },
+      {
+        "node": "fast34r1",
+        "interface": "fast34r1-eth1"
+      }
+    ],
+    "slow": [],
+    "fast": []
+  },
+  "experiment": {
+    "duration_s": 55,
+    "events": [
+      {
+        "time_s": 20,
+        "type": "set_path_extra_delay",
+        "path": "seg23_fast",
+        "delay_ms": 180
+      },
+      {
+        "time_s": 40,
+        "type": "set_path_extra_delay",
+        "path": "seg23_fast",
+        "delay_ms": 0
+      }
+    ],
+    "segment_local_controllers": [
+      {
+        "stage_key": "ixp1_fwd",
+        "switch": "ixp1s1",
+        "traffic_paths": {
+          "slow": "slow",
+          "fast": "fast"
+        },
+        "probe_paths": {
+          "slow": "ixp1_probe_slow",
+          "fast": "ixp1_probe_fast"
+        },
+        "probe_client": "as1r1",
+        "probe_targets": {
+          "slow": "8.2.1.2",
+          "fast": "8.2.1.3"
+        },
+        "probe_server_hosts": {
+          "slow": "slow12r1",
+          "fast": "fast12r1"
+        },
+        "probe_tos": {
+          "slow": 40,
+          "fast": 72
+        },
+        "segment_id": "seg12"
+      },
+      {
+        "stage_key": "ixp2_fwd",
+        "switch": "ixp2s1",
+        "traffic_paths": {
+          "slow": "ixp2_slow_fwd",
+          "fast": "ixp2_fast_fwd"
+        },
+        "probe_paths": {
+          "slow": "ixp2_slow_fwd",
+          "fast": "ixp2_fast_fwd"
+        },
+        "probe_client": "fast12r1",
+        "probe_targets": {
+          "slow": "8.2.2.21",
+          "fast": "8.2.2.22"
+        },
+        "probe_server_hosts": {
+          "slow": "slow23r1",
+          "fast": "fast23r1"
+        },
+        "probe_tos": {
+          "slow": 40,
+          "fast": 72
+        },
+        "segment_id": "seg23"
+      },
+      {
+        "stage_key": "ixp3_fwd",
+        "switch": "ixp3s1",
+        "traffic_paths": {
+          "slow": "ixp3_slow_fwd",
+          "fast": "ixp3_fast_fwd"
+        },
+        "probe_paths": {
+          "slow": "ixp3_slow_fwd",
+          "fast": "ixp3_fast_fwd"
+        },
+        "probe_client": "fast23r1",
+        "probe_targets": {
+          "slow": "8.2.3.31",
+          "fast": "8.2.3.32"
+        },
+        "probe_server_hosts": {
+          "slow": "slow34r1",
+          "fast": "fast34r1"
+        },
+        "probe_tos": {
+          "slow": 40,
+          "fast": 72
+        },
+        "segment_id": "seg34"
+      },
+      {
+        "stage_key": "ixp4_rev",
+        "switch": "ixp4s1",
+        "traffic_paths": {
+          "slow": "slow",
+          "fast": "fast"
+        },
+        "probe_paths": {
+          "slow": "ixp4_probe_slow",
+          "fast": "ixp4_probe_fast"
+        },
+        "probe_client": "as2r1",
+        "probe_targets": {
+          "slow": "8.2.4.2",
+          "fast": "8.2.4.3"
+        },
+        "probe_server_hosts": {
+          "slow": "slow34r1",
+          "fast": "fast34r1"
+        },
+        "probe_tos": {
+          "slow": 40,
+          "fast": 72
+        },
+        "segment_id": "seg34"
+      },
+      {
+        "stage_key": "ixp3_rev",
+        "switch": "ixp3s1",
+        "traffic_paths": {
+          "slow": "ixp3_slow_rev",
+          "fast": "ixp3_fast_rev"
+        },
+        "probe_paths": {
+          "slow": "ixp3_slow_rev",
+          "fast": "ixp3_fast_rev"
+        },
+        "probe_client": "fast34r1",
+        "probe_targets": {
+          "slow": "8.2.3.21",
+          "fast": "8.2.3.22"
+        },
+        "probe_server_hosts": {
+          "slow": "slow23r1",
+          "fast": "fast23r1"
+        },
+        "probe_tos": {
+          "slow": 40,
+          "fast": 72
+        },
+        "segment_id": "seg23"
+      },
+      {
+        "stage_key": "ixp2_rev",
+        "switch": "ixp2s1",
+        "traffic_paths": {
+          "slow": "ixp2_slow_rev",
+          "fast": "ixp2_fast_rev"
+        },
+        "probe_paths": {
+          "slow": "ixp2_slow_rev",
+          "fast": "ixp2_fast_rev"
+        },
+        "probe_client": "fast23r1",
+        "probe_targets": {
+          "slow": "8.2.2.11",
+          "fast": "8.2.2.12"
+        },
+        "probe_server_hosts": {
+          "slow": "slow12r1",
+          "fast": "fast12r1"
+        },
+        "probe_tos": {
+          "slow": 40,
+          "fast": 72
+        },
+        "segment_id": "seg12"
+      }
+    ],
+    "segmented_sessions": [
+      {
+        "name": "session_100_to_200",
+        "dynamic_groups": {
+          "ixp1_fwd": "traffic_100_200_ixp1_fwd",
+          "ixp2_fwd": "traffic_100_200_ixp2_fwd",
+          "ixp3_fwd": "traffic_100_200_ixp3_fwd",
+          "ixp4_rev": "traffic_100_200_ixp4_rev",
+          "ixp3_rev": "traffic_100_200_ixp3_rev",
+          "ixp2_rev": "traffic_100_200_ixp2_rev"
+        },
+        "static_groups": {
+          "ixp4_fwd_exit": "traffic_100_200_ixp4_fwd_exit",
+          "ixp1_rev_exit": "traffic_100_200_ixp1_rev_exit"
+        }
+      },
+      {
+        "name": "session_100_to_600",
+        "dynamic_groups": {
+          "ixp1_fwd": "traffic_100_600_ixp1_fwd",
+          "ixp2_fwd": "traffic_100_600_ixp2_fwd",
+          "ixp3_fwd": "traffic_100_600_ixp3_fwd",
+          "ixp4_rev": "traffic_100_600_ixp4_rev",
+          "ixp3_rev": "traffic_100_600_ixp3_rev",
+          "ixp2_rev": "traffic_100_600_ixp2_rev"
+        },
+        "static_groups": {
+          "ixp4_fwd_exit": "traffic_100_600_ixp4_fwd_exit",
+          "ixp1_rev_exit": "traffic_100_600_ixp1_rev_exit"
+        }
+      },
+      {
+        "name": "session_500_to_200",
+        "dynamic_groups": {
+          "ixp1_fwd": "traffic_500_200_ixp1_fwd",
+          "ixp2_fwd": "traffic_500_200_ixp2_fwd",
+          "ixp3_fwd": "traffic_500_200_ixp3_fwd",
+          "ixp4_rev": "traffic_500_200_ixp4_rev",
+          "ixp3_rev": "traffic_500_200_ixp3_rev",
+          "ixp2_rev": "traffic_500_200_ixp2_rev"
+        },
+        "static_groups": {
+          "ixp4_fwd_exit": "traffic_500_200_ixp4_fwd_exit",
+          "ixp1_rev_exit": "traffic_500_200_ixp1_rev_exit"
+        }
+      },
+      {
+        "name": "session_500_to_600",
+        "dynamic_groups": {
+          "ixp1_fwd": "traffic_500_600_ixp1_fwd",
+          "ixp2_fwd": "traffic_500_600_ixp2_fwd",
+          "ixp3_fwd": "traffic_500_600_ixp3_fwd",
+          "ixp4_rev": "traffic_500_600_ixp4_rev",
+          "ixp3_rev": "traffic_500_600_ixp3_rev",
+          "ixp2_rev": "traffic_500_600_ixp2_rev"
+        },
+        "static_groups": {
+          "ixp4_fwd_exit": "traffic_500_600_ixp4_fwd_exit",
+          "ixp1_rev_exit": "traffic_500_600_ixp1_rev_exit"
+        }
+      }
+    ]
+  },
+  "telemetry": {
+    "mode": "mode3",
+    "sampling": {
+      "sample_every_n": 1,
+      "queue_weight": 0.0,
+      "residence_weight": 0.0,
+      "drain_wait_s": 0.2
+    },
+    "int": {
+      "udp_port": 5001,
+      "queue_weight": 0.0,
+      "residence_weight": 500.0
+    }
+  },
+  "bgp_reachability": {
+    "enabled": true,
+    "refresh_each_interval": true,
+    "observers": [
+      {
+        "switch": "ixp1s1",
+        "tenant_id": 100,
+        "router": "as1r1",
+        "next_hop_to_path": {
+          "8.2.1.2": "slow",
+          "8.2.1.3": "fast"
+        }
+      },
+      {
+        "switch": "ixp1s1",
+        "tenant_id": 500,
+        "router": "as5r1",
+        "next_hop_to_path": {
+          "8.2.1.2": "slow",
+          "8.2.1.3": "fast"
+        }
+      },
+      {
+        "switch": "ixp4s1",
+        "tenant_id": 200,
+        "router": "as2r1",
+        "next_hop_to_path": {
+          "8.2.4.2": "slow",
+          "8.2.4.3": "fast"
+        }
+      },
+      {
+        "switch": "ixp4s1",
+        "tenant_id": 600,
+        "router": "as6r1",
+        "next_hop_to_path": {
+          "8.2.4.2": "slow",
+          "8.2.4.3": "fast"
+        }
+      }
+    ],
+    "expected_allowed_paths_by_session": {
+      "session_100_to_200": [
+        "slow",
+        "fast"
+      ],
+      "session_100_to_600": [
+        "fast"
+      ],
+      "session_500_to_200": [
+        "slow"
+      ],
+      "session_500_to_600": [
+        "slow",
+        "fast"
+      ]
+    },
+    "edge_router_peering_ip": {
+      "as1r1": "8.2.1.1",
+      "as5r1": "8.2.1.4",
+      "as2r1": "8.2.4.1",
+      "as6r1": "8.2.4.4"
+    },
+    "path_transit_router": {
+      "slow": "as3r1",
+      "fast": "as4r1"
+    },
+    "path_transit_routers": {
+      "slow": [
+        "slow12r1",
+        "slow23r1",
+        "slow34r1"
+      ],
+      "fast": [
+        "fast12r1",
+        "fast23r1",
+        "fast34r1"
+      ]
+    }
+  }
+}

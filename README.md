@@ -87,3 +87,27 @@ make run-bgp-superloop-generalized
 make run-bgp-superloop-generalized-mode2
 make run-bgp-superloop-generalized-mode3
 ```
+
+# Segmented local steering
+
+We make all 4 IXPs programmable and can make local segment choices (not relying on a single end-to-end fast/slow decision).
+
+Topology name:
+- `sdx_bgp_superloop_segmented`
+
+Commands:
+- `make run-bgp-superloop-segmented-reachability-validate`
+- `make run-bgp-superloop-segmented-local`
+- `make run-bgp-superloop-segmented-local-mode2`
+- `make run-bgp-superloop-segmented-local-mode3`
+
+Notes:
+- `ixp1` chooses segment 12 locally
+- `ixp2` chooses segment 23 locally (forward) and segment 12 locally (reverse)
+- `ixp3` chooses segment 34 locally (forward) and segment 23 locally (reverse)
+- `ixp4` chooses segment 34 locally (reverse)
+- outer edge-exit choices at `ixp1` and `ixp4` remain static based on destination edge AS
+
+(BGP still determines which sessions are globally legal for `slow`, `fast`, or both.
+Sessions with only one legal class are forced at every stage.
+Dual-legal sessions can become mixed, e.g. `fast-slow-fast`.)

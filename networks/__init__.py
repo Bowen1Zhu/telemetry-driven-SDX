@@ -11,6 +11,7 @@ _TOPOLOGY_MODULES: dict[str, str] = {
     "sdx_bgp": "networks.sdx_bgp.mininet.networks",
     "sdx_bgp_loop": "networks.sdx_bgp_loop.mininet.networks",
     "sdx_bgp_superloop": "networks.sdx_bgp_superloop.mininet.networks",
+    "sdx_bgp_superloop_segmented": "networks.sdx_bgp_superloop_segmented.mininet.networks",
 }
 
 
